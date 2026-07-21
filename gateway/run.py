@@ -10119,6 +10119,56 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                     # Record rate limit so subsequent messages are silently ignored
                     self.pairing_store._record_rate_limit(platform_name, source.user_id)
             return None
+
+        # Give plugins a safe, post-authorization interception point with the
+        # complete MessageEvent. The first recognized result wins. A hook
+        # failure or timeout fails open to normal Hermes dispatch.
+        if not is_internal:
+            try:
+                from hermes_cli.plugins import invoke_hook_async as _invoke_hook_async
+
+                _authorized_results = await asyncio.wait_for(
+                    _invoke_hook_async("authorized_gateway_dispatch", event=event),
+                    timeout=30.0,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "authorized_gateway_dispatch timed out; continuing normal dispatch"
+                )
+                _authorized_results = []
+            except asyncio.CancelledError:
+                raise
+            except Exception as _hook_exc:
+                logger.warning(
+                    "authorized_gateway_dispatch invocation failed: %s", _hook_exc
+                )
+                _authorized_results = []
+
+            for _result in _authorized_results:
+                if not isinstance(_result, dict):
+                    continue
+                _action = _result.get("action")
+                if _action == "skip":
+                    logger.info(
+                        "authorized_gateway_dispatch skip: reason=%s platform=%s chat=%s",
+                        _result.get("reason"),
+                        source.platform.value if source.platform else "unknown",
+                        source.chat_id or "unknown",
+                    )
+                    return None
+                if _action == "respond":
+                    _response_text = _result.get("text")
+                    if isinstance(_response_text, str) and _response_text.strip():
+                        return _response_text
+                    break
+                if _action == "rewrite":
+                    _new_text = _result.get("text")
+                    if isinstance(_new_text, str):
+                        event = dataclasses.replace(event, text=_new_text)
+                        source = event.source
+                    break
+                if _action == "allow":
+                    break
         
         # Intercept messages that are responses to a pending /update prompt.
         # The update process (detached) wrote .update_prompt.json; the watcher

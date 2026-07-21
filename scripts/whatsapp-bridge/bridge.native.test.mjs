@@ -81,6 +81,8 @@ import {
             participant: '15559998888@s.whatsapp.net',
             remoteJid: '15551234567@s.whatsapp.net',
             quotedMessage: { conversation: 'approve deploy?' },
+            isForwarded: true,
+            forwardingScore: 2,
           },
         },
       },
@@ -97,6 +99,8 @@ import {
   assert.equal(event.quotedRemoteJid, '15551234567@s.whatsapp.net');
   assert.equal(event.quotedText, 'approve deploy?');
   assert.equal(event.hasQuotedMessage, true);
+  assert.equal(event.isForwarded, true);
+  assert.equal(event.forwardingScore, 2);
   assert.equal(event.body, 'approved');
   console.log('  ✓ inbound quoted metadata includes quoted text');
 }

@@ -315,6 +315,10 @@ export async function extractBridgeEvent({
   const quotedRemoteJid = normalizeWhatsAppId(contextInfo?.remoteJid || '') || null;
   const hasQuotedMessage = !!contextInfo?.quotedMessage;
   const quotedText = textFromQuotedMessage(contextInfo?.quotedMessage);
+  const isForwarded = contextInfo?.isForwarded === true;
+  const forwardingScore = Number.isFinite(Number(contextInfo?.forwardingScore))
+    ? Number(contextInfo.forwardingScore)
+    : 0;
 
   let body = '';
   let hasMedia = false;
@@ -482,6 +486,8 @@ export async function extractBridgeEvent({
     quotedRemoteJid,
     quotedText,
     hasQuotedMessage,
+    isForwarded,
+    forwardingScore,
     botIds,
     timestamp: msg.messageTimestamp,
   };

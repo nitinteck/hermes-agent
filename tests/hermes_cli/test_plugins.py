@@ -635,6 +635,37 @@ class TestPluginHooks:
     def test_valid_hooks_include_pre_gateway_dispatch(self):
         assert "pre_gateway_dispatch" in VALID_HOOKS
 
+    def test_valid_hooks_include_authorized_gateway_dispatch(self):
+        assert "authorized_gateway_dispatch" in VALID_HOOKS
+
+    @pytest.mark.asyncio
+    async def test_async_hook_supports_sync_async_and_exception_isolation(self):
+        mgr = PluginManager()
+        called_after_terminal = False
+
+        async def _async_callback(**kwargs):
+            return {"action": "respond", "text": str(kwargs["event"])}
+
+        def _raising_callback(**kwargs):
+            raise RuntimeError("contained")
+
+        def _must_not_run(**kwargs):
+            nonlocal called_after_terminal
+            called_after_terminal = True
+
+        mgr._hooks["authorized_gateway_dispatch"] = [
+            _raising_callback,
+            _async_callback,
+            _must_not_run,
+        ]
+
+        results = await mgr.invoke_hook_async(
+            "authorized_gateway_dispatch", event="complete-event"
+        )
+
+        assert results == [{"action": "respond", "text": "complete-event"}]
+        assert called_after_terminal is False
+
     def test_pre_gateway_dispatch_collects_action_dicts(self, tmp_path, monkeypatch):
         """pre_gateway_dispatch callbacks return action dicts (skip/rewrite/allow)."""
         plugins_dir = tmp_path / "hermes_test" / "plugins"
