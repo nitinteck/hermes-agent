@@ -11,7 +11,11 @@ Batch delays are read from ``config.extra`` (config.yaml), not env vars.
 import asyncio
 
 from gateway.config import Platform, PlatformConfig
-from gateway.platforms.base import MessageEvent, MessageType
+from gateway.platforms.base import (
+    AuthorizedGatewayEnvelope,
+    MessageEvent,
+    MessageType,
+)
 from plugins.platforms.whatsapp.adapter import WhatsAppAdapter
 from gateway.session import SessionSource
 
@@ -22,7 +26,7 @@ def _make_adapter(**extra):
     return WhatsAppAdapter(PlatformConfig(enabled=True, extra=base))
 
 
-def _event(text):
+def _event(text, message_id=None):
     src = SessionSource(
         platform=Platform.WHATSAPP,
         chat_id="chat123",
@@ -30,7 +34,23 @@ def _event(text):
         user_id="user1",
         user_name="tester",
     )
-    return MessageEvent(text=text, message_type=MessageType.TEXT, source=src)
+    envelope = AuthorizedGatewayEnvelope(
+        envelope_version=1,
+        platform="whatsapp",
+        transport="baileys",
+        chat_id="chat123",
+        chat_type="dm",
+        sender_id="user1",
+        sender_identifier_type="unknown",
+        source_message_id=message_id,
+    )
+    return MessageEvent(
+        text=text,
+        message_type=MessageType.TEXT,
+        source=src,
+        authorized_envelope=envelope,
+        constituent_envelopes=[envelope],
+    )
 
 
 def test_batch_delays_default_from_config():
@@ -105,3 +125,34 @@ def test_lone_message_dispatched_alone():
 
     asyncio.run(_drive())
     assert dispatched == ["solo"]
+
+
+def test_rapid_texts_preserve_constituent_message_boundaries_and_order():
+    adapter = _make_adapter(
+        text_batch_delay_seconds=0.05,
+        text_batch_split_delay_seconds=0.05,
+    )
+    dispatched = []
+
+    async def _capture(event):
+        dispatched.append(event)
+
+    adapter.handle_message = _capture
+
+    async def _drive():
+        adapter._enqueue_text_event(_event("one", "message-1"))
+        adapter._enqueue_text_event(_event("two", "message-2"))
+        adapter._enqueue_text_event(_event("three", "message-3"))
+        await asyncio.sleep(0.2)
+
+    asyncio.run(_drive())
+
+    assert len(dispatched) == 1
+    event = dispatched[0]
+    assert event.text == "one\ntwo\nthree"
+    assert [item.source_message_id for item in event.constituent_envelopes] == [
+        "message-1",
+        "message-2",
+        "message-3",
+    ]
+    assert [item.sequence_index for item in event.constituent_envelopes] == [0, 1, 2]

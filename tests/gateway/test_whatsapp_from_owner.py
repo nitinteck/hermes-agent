@@ -75,6 +75,8 @@ def test_metadata_flag_set_when_payload_has_from_owner():
 
     assert event is not None
     assert event.metadata.get("whatsapp_from_owner") is True
+    assert event.authorized_envelope is not None
+    assert event.authorized_envelope.sent_by_user is True
     assert event.text.startswith("[owner reply] ")
     assert event.text == "[owner reply] hi from the linked phone"
 
@@ -129,3 +131,98 @@ def test_metadata_flag_absent_when_explicitly_false():
 
     assert event is not None
     assert "whatsapp_from_owner" not in event.metadata
+
+
+def test_authorized_envelope_preserves_truthful_whatsapp_provenance():
+    adapter = _make_adapter()
+    payload = _dm_payload(
+        senderDisplayName="Synthetic Sender",
+        senderPushName="Synthetic Sender",
+        chatDisplayName="Synthetic Chat",
+        fromMe=False,
+        nativeType="extendedTextMessage",
+        caption="Synthetic caption",
+        mentionedIds=["mention@example.invalid"],
+        isForwarded=True,
+        forwardingScore=2,
+        hasQuotedMessage=True,
+        quotedMessageId="quoted-1",
+        quotedRemoteJid="chat@example.invalid",
+        quotedParticipant="participant@example.invalid",
+        quotedText="Synthetic quoted text",
+        correlationId="request-1",
+        authState={"token": "must-not-escape"},
+    )
+
+    event = asyncio.run(adapter._build_message_event(payload))
+
+    assert event is not None
+    envelope = event.authorized_envelope
+    assert envelope is not None
+    assert envelope.envelope_version == 1
+    assert envelope.platform == "whatsapp"
+    assert envelope.transport == "baileys"
+    assert envelope.chat_id == payload["chatId"]
+    assert envelope.chat_display_name == "Synthetic Chat"
+    assert envelope.sender_display_name == "Synthetic Sender"
+    assert envelope.sender_push_name == "Synthetic Sender"
+    assert envelope.sent_by_user is False
+    assert envelope.source_message_id == "M1"
+    assert envelope.source_timestamp is not None
+    assert envelope.caption == "Synthetic caption"
+    assert envelope.mentions == ("mention@example.invalid",)
+    assert envelope.is_forwarded is True
+    assert envelope.forwarding_score == 2
+    assert envelope.correlation_id == "request-1"
+    assert envelope.quoted_message is not None
+    assert envelope.quoted_message.message_id == "quoted-1"
+    assert envelope.quoted_message.chat_id == "chat@example.invalid"
+    assert envelope.quoted_message.sender_id == "participant@example.invalid"
+    assert envelope.quoted_message.text == "Synthetic quoted text"
+    assert "authState" not in envelope.as_dict()
+    assert "token" not in str(envelope.as_dict())
+
+
+def test_lid_is_not_claimed_as_a_verified_phone():
+    adapter = _make_adapter()
+    payload = _dm_payload(
+        chatId="synthetic-chat@lid",
+        senderId="synthetic-sender@lid",
+        fromMe=False,
+    )
+
+    event = asyncio.run(adapter._build_message_event(payload))
+
+    assert event is not None and event.authorized_envelope is not None
+    assert event.authorized_envelope.sender_identifier_type == "lid"
+    assert event.authorized_envelope.sender_phone is None
+    assert event.authorized_envelope.sender_display_name is None
+    assert event.authorized_envelope.sender_push_name is None
+    assert event.authorized_envelope.chat_display_name is None
+    assert event.authorized_envelope.filename is None
+    assert event.authorized_envelope.caption is None
+
+
+@pytest.mark.parametrize(
+    ("media_type", "native_type", "mime", "native_metadata"),
+    [
+        ("image", "imageMessage", "image/jpeg", {}),
+        ("ptt", "audioMessage", "audio/ogg", {"audio": {"ptt": True}}),
+    ],
+)
+def test_image_and_audio_metadata_are_preserved_without_unapproved_paths(
+    media_type, native_type, mime, native_metadata
+):
+    adapter = _make_adapter()
+    payload = _dm_payload(
+        hasMedia=True,
+        mediaType=media_type,
+        nativeType=native_type,
+        mime=mime,
+        fileName="synthetic.bin" if media_type == "image" else "",
+        caption="Synthetic media" if media_type == "image" else "",
+        nativeMetadata=native_metadata,
+        mediaUrls=["/etc/passwd"],
+    )
+
+    event = asyncio.run(adapter._build_message_event(payload))

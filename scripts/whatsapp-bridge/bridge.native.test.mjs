@@ -102,6 +102,11 @@ import {
   assert.equal(event.isForwarded, true);
   assert.equal(event.forwardingScore, 2);
   assert.equal(event.body, 'approved');
+  assert.equal(event.senderDisplayName, 'Tester');
+  assert.equal(event.senderPushName, 'Tester');
+  assert.equal(event.chatDisplayName, 'Tester');
+  assert.equal(event.fromMe, false);
+  assert.equal(event.caption, '');
   console.log('  ✓ inbound quoted metadata includes quoted text');
 }
 
@@ -126,6 +131,7 @@ import {
   });
 
   assert.equal(event.hasMedia, true);
+  assert.equal(event.caption, 'see attached');
   assert.equal(event.mediaType, 'document');
   assert.equal(event.mime, 'application/pdf');
   assert.equal(event.fileName, 'report.pdf');

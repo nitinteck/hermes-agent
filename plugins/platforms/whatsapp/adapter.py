@@ -16,6 +16,8 @@ with different backends via a bridge pattern.
 """
 
 import asyncio
+from dataclasses import replace
+from datetime import UTC, datetime
 import logging
 import os
 import platform
@@ -266,6 +268,8 @@ from gateway.config import Platform, PlatformConfig
 from gateway.platforms.whatsapp_common import WhatsAppBehaviorMixin
 from gateway.whatsapp_identity import to_whatsapp_jid
 from gateway.platforms.base import (
+    AuthorizedGatewayEnvelope,
+    AuthorizedQuotedMessage,
     BasePlatformAdapter,
     MessageEvent,
     MessageType,
@@ -316,6 +320,159 @@ def _is_allowed_bridge_path(url: str) -> bool:
         except (OSError, ValueError):
             continue
     return False
+
+
+def _optional_text(value: Any) -> Optional[str]:
+    """Return a non-empty string without manufacturing a placeholder."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _source_timestamp(value: Any) -> Optional[datetime]:
+    """Parse the bridge timestamp as an authoritative UTC instant."""
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return None
+    if seconds > 10_000_000_000:
+        seconds /= 1000
+    try:
+        return datetime.fromtimestamp(seconds, tz=UTC)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _nonnegative_int(value: Any) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _string_values(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)):
+        return ()
+    return tuple(
+        item.strip()
+        for item in value
+        if isinstance(item, str) and item.strip()
+    )
+
+
+def _whatsapp_identifier_type(identifier: Optional[str]) -> str:
+    """Classify an identifier without treating an opaque LID as a phone."""
+    value = (identifier or "").casefold()
+    if value.endswith("@lid"):
+        return "lid"
+    if "@" in value:
+        return "jid"
+    if value.lstrip("+").isdigit() and value:
+        return "phone"
+    return "unknown"
+
+
+def _reliable_whatsapp_phone(identifier: Optional[str]) -> Optional[str]:
+    """Extract a phone only from WhatsApp's explicit phone-JID namespace."""
+    value = (identifier or "").strip()
+    if not value.casefold().endswith("@s.whatsapp.net"):
+        return None
+    local = value.split("@", 1)[0].split(":", 1)[0]
+    return local if local.isdigit() else None
+
+
+def _sanitised_native_flags(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Allow-list harmless transport flags; never expose the native object."""
+    native = data.get("nativeMetadata")
+    if not isinstance(native, dict):
+        return {}
+    flags: Dict[str, Any] = {}
+    audio = native.get("audio")
+    if isinstance(audio, dict) and isinstance(audio.get("ptt"), bool):
+        flags["ptt"] = audio["ptt"]
+    video = native.get("video")
+    if isinstance(video, dict) and isinstance(video.get("gifPlayback"), bool):
+        flags["gif_playback"] = video["gifPlayback"]
+    sticker = native.get("sticker")
+    if isinstance(sticker, dict) and isinstance(sticker.get("animated"), bool):
+        flags["animated_sticker"] = sticker["animated"]
+    return flags
+
+
+def _build_authorized_envelope(
+    data: Dict[str, Any],
+    *,
+    source_timestamp: Optional[datetime],
+    local_media_paths: list[str],
+) -> AuthorizedGatewayEnvelope:
+    """Build version 1 from normalised bridge fields after path validation."""
+    sender_id = _optional_text(data.get("senderId"))
+    quoted = None
+    if data.get("hasQuotedMessage") or any(
+        data.get(field)
+        for field in (
+            "quotedMessageId",
+            "quotedRemoteJid",
+            "quotedParticipant",
+            "quotedText",
+        )
+    ):
+        quoted = AuthorizedQuotedMessage(
+            message_id=_optional_text(data.get("quotedMessageId")),
+            chat_id=_optional_text(data.get("quotedRemoteJid")),
+            sender_id=_optional_text(data.get("quotedParticipant")),
+            text=_optional_text(data.get("quotedText")),
+        )
+
+    sent_by_user: Optional[bool] = None
+    if data.get("fromOwner") is True:
+        sent_by_user = True
+    elif "fromMe" in data:
+        sent_by_user = data.get("fromMe") is True
+
+    native_flags = _sanitised_native_flags(data)
+    raw_metadata: Dict[str, Any] = {
+        "has_media": data.get("hasMedia") is True,
+        "has_quoted_message": data.get("hasQuotedMessage") is True,
+    }
+    if native_flags:
+        raw_metadata["native_flags"] = native_flags
+
+    is_group = data.get("isGroup") is True
+    return AuthorizedGatewayEnvelope(
+        envelope_version=1,
+        platform="whatsapp",
+        transport="baileys",
+        chat_id=_optional_text(data.get("chatId")),
+        chat_type="group" if is_group else "dm",
+        chat_display_name=_optional_text(data.get("chatDisplayName")),
+        sender_id=sender_id,
+        sender_identifier_type=_whatsapp_identifier_type(sender_id),
+        sender_display_name=_optional_text(data.get("senderDisplayName")),
+        sender_push_name=_optional_text(data.get("senderPushName")),
+        sender_phone=_reliable_whatsapp_phone(sender_id),
+        sent_by_user=sent_by_user,
+        source_message_id=_optional_text(data.get("messageId")),
+        source_timestamp=source_timestamp,
+        quoted_message=quoted,
+        native_message_type=_optional_text(data.get("nativeType")),
+        media_type=_optional_text(data.get("mediaType")),
+        mime_type=_optional_text(data.get("mime")),
+        filename=_optional_text(data.get("fileName")),
+        caption=_optional_text(data.get("caption")),
+        mentions=_string_values(data.get("mentionedIds")),
+        is_forwarded=data.get("isForwarded") is True,
+        forwarding_score=_nonnegative_int(data.get("forwardingScore")),
+        group_id=_optional_text(data.get("chatId")) if is_group else None,
+        local_media_paths=tuple(local_media_paths),
+        correlation_id=(
+            _optional_text(data.get("correlationId"))
+            or _optional_text(data.get("requestId"))
+        ),
+        raw_metadata=raw_metadata,
+    )
+
 
 
 def _file_content_hash(path: Path) -> str:
@@ -1291,7 +1448,16 @@ class WhatsAppAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
         key = self._text_batch_key(event)
         existing = self._pending_text_batches.get(key)
         chunk_len = len(event.text or "")
+        incoming_envelopes = list(event.constituent_envelopes)
+        if not incoming_envelopes and event.authorized_envelope is not None:
+            incoming_envelopes = [event.authorized_envelope]
         if existing is None:
+            event.constituent_envelopes = [
+                replace(envelope, sequence_index=index)
+                for index, envelope in enumerate(incoming_envelopes)
+            ]
+            if event.constituent_envelopes:
+                event.authorized_envelope = event.constituent_envelopes[0]
             event._last_chunk_len = chunk_len  # type: ignore[attr-defined]
             self._pending_text_batches[key] = event
         else:
@@ -1301,6 +1467,11 @@ class WhatsAppAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
             if event.media_urls:
                 existing.media_urls.extend(event.media_urls)
                 existing.media_types.extend(event.media_types)
+            start_index = len(existing.constituent_envelopes)
+            existing.constituent_envelopes.extend(
+                replace(envelope, sequence_index=start_index + offset)
+                for offset, envelope in enumerate(incoming_envelopes)
+            )
 
         prior_task = self._pending_text_batch_tasks.get(key)
         if prior_task and not prior_task.done():
@@ -1503,6 +1674,16 @@ class WhatsAppAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
                 if not body.startswith(_OWNER_REPLY_PREFIX):
                     body = f"{_OWNER_REPLY_PREFIX}{body}"
 
+            source_timestamp = _source_timestamp(data.get("timestamp"))
+            local_media_paths = [
+                value
+                for value in cached_urls
+                if os.path.isabs(value) and _is_allowed_bridge_path(value)
+            ]
+            envelope = _build_authorized_envelope(
+                data, source_timestamp=source_timestamp, local_media_paths=local_media_paths
+            )
+
             return MessageEvent(
                 text=body,
                 message_type=msg_type,
@@ -1516,6 +1697,9 @@ class WhatsAppAdapter(WhatsAppBehaviorMixin, BasePlatformAdapter):
                 reply_to_text=reply_to_text,
                 reply_to_author_id=reply_to_author_id,
                 reply_to_is_own_message=reply_to_is_own_message,
+                authorized_envelope=envelope,
+                constituent_envelopes=[envelope],
+                timestamp=source_timestamp or datetime.now(UTC),
             )
         except Exception as e:
             print(f"[{self.name}] Error building event: {e}")

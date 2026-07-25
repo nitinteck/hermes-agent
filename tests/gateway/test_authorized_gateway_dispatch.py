@@ -7,11 +7,23 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from gateway.config import GatewayConfig, Platform, PlatformConfig
-from gateway.platforms.base import MessageEvent, MessageType
+from gateway.platforms.base import (
+    AuthorizedGatewayEnvelope,
+    MessageEvent,
+    MessageType,
+)
 from gateway.session import SessionSource
 
 
 def _make_event(text: str = "hello") -> MessageEvent:
+    envelope = AuthorizedGatewayEnvelope(
+        envelope_version=1,
+        platform="whatsapp",
+        transport="baileys",
+        chat_id="synthetic-chat@example.invalid",
+        chat_type="dm",
+        source_message_id="message-1",
+    )
     return MessageEvent(
         text=text,
         message_type=MessageType.DOCUMENT,
@@ -20,6 +32,8 @@ def _make_event(text: str = "hello") -> MessageEvent:
         media_types=["application/pdf"],
         metadata={"whatsapp_forwarded": True},
         raw_message={"fileName": "document.pdf", "timestamp": 123},
+        authorized_envelope=envelope,
+        constituent_envelopes=[envelope],
         reply_to_message_id="quoted-1",
         reply_to_text="quoted text",
         source=SessionSource(
@@ -69,6 +83,10 @@ async def test_hook_runs_after_authorization_with_complete_event(monkeypatch):
     assert seen["event"] is event
     assert seen["event"].media_urls == ["/tmp/document.pdf"]
     assert seen["event"].raw_message["fileName"] == "document.pdf"
+    assert seen["event"].authorized_envelope is not None
+    assert seen["event"].authorized_envelope.envelope_version == 1
+    assert seen["event"].authorized_envelope.chat_id == "synthetic-chat@example.invalid"
+    assert len(seen["event"].constituent_envelopes) == 1
     assert result == "saved"
     runner._handle_message_with_agent.assert_not_awaited()
 

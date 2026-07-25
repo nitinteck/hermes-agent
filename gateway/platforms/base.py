@@ -1755,6 +1755,75 @@ class ProcessingOutcome(Enum):
     CANCELLED = "cancelled"
 
 
+@dataclass(frozen=True)
+class AuthorizedQuotedMessage:
+    """Sanitised reply provenance exposed at the post-authorisation hook."""
+
+    message_id: Optional[str] = None
+    chat_id: Optional[str] = None
+    sender_id: Optional[str] = None
+    text: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class AuthorizedGatewayEnvelope:
+    """Versioned, allow-listed provenance for authorised gateway plugins.
+
+    Stable conversation identity is ``platform + chat_id`` (plus an explicit
+    platform thread identifier when one exists). Display names are descriptive
+    only. Local media paths are included only after adapter validation and must
+    never be treated as durable provenance.
+    """
+
+    envelope_version: int
+    platform: str
+    transport: Optional[str] = None
+    chat_id: Optional[str] = None
+    chat_type: Optional[str] = None
+    chat_display_name: Optional[str] = None
+    thread_id: Optional[str] = None
+    sender_id: Optional[str] = None
+    sender_identifier_type: Optional[str] = None
+    sender_display_name: Optional[str] = None
+    sender_push_name: Optional[str] = None
+    sender_phone: Optional[str] = None
+    sent_by_user: Optional[bool] = None
+    source_message_id: Optional[str] = None
+    source_timestamp: Optional[datetime] = None
+    quoted_message: Optional[AuthorizedQuotedMessage] = None
+    native_message_type: Optional[str] = None
+    media_type: Optional[str] = None
+    mime_type: Optional[str] = None
+    filename: Optional[str] = None
+    caption: Optional[str] = None
+    mentions: Tuple[str, ...] = ()
+    is_forwarded: bool = False
+    forwarding_score: int = 0
+    group_id: Optional[str] = None
+    group_context: Dict[str, Any] = field(default_factory=dict)
+    local_media_paths: Tuple[str, ...] = ()
+    correlation_id: Optional[str] = None
+    sequence_index: int = 0
+    raw_metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.envelope_version != 1:
+            raise ValueError("unsupported authorised gateway envelope version")
+        if not self.platform.strip():
+            raise ValueError("authorised gateway envelope platform is required")
+        if self.forwarding_score < 0 or self.sequence_index < 0:
+            raise ValueError("authorised gateway envelope ordering values cannot be negative")
+        if self.source_timestamp is not None and (
+            self.source_timestamp.tzinfo is None
+            or self.source_timestamp.utcoffset() is None
+        ):
+            raise ValueError("authorised gateway source timestamp must be timezone-aware")
+
+    def as_dict(self) -> Dict[str, Any]:
+        """Return a plugin-friendly copy without exposing the native message."""
+        return dataclasses.asdict(self)
+
+
 @dataclass
 class MessageEvent:
     """
@@ -1772,6 +1841,13 @@ class MessageEvent:
     # Original platform data
     raw_message: Any = None
     message_id: Optional[str] = None
+
+    # Sanitised post-authorisation plugin contract. Existing callbacks continue
+    # receiving the same MessageEvent argument and can ignore these optional
+    # fields. WhatsApp debounce batching keeps one ordered envelope per original
+    # constituent message instead of collapsing provenance into the first item.
+    authorized_envelope: Optional[AuthorizedGatewayEnvelope] = None
+    constituent_envelopes: List[AuthorizedGatewayEnvelope] = field(default_factory=list)
 
     # Platform-specific update identifier.  For Telegram this is the
     # ``update_id`` from the PTB Update wrapper; other platforms currently

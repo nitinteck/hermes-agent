@@ -325,6 +325,7 @@ export async function extractBridgeEvent({
   let mediaType = '';
   let mime = '';
   let fileName = '';
+  let caption = '';
   let nativeType = '';
   const mediaUrls = [];
   const nativeMetadata = {};
@@ -361,7 +362,8 @@ export async function extractBridgeEvent({
     nativeType = 'extendedTextMessage';
   } else if (messageContent.imageMessage) {
     const item = messageContent.imageMessage;
-    body = item.caption || '';
+    caption = item.caption || '';
+    body = caption;
     hasMedia = true;
     mediaType = 'image';
     nativeType = 'imageMessage';
@@ -369,7 +371,8 @@ export async function extractBridgeEvent({
     await saveMedia({ mediaMessage: item, dir: cacheDirs.image, prefix: 'img', fallbackExt: '.jpg', type: 'image' });
   } else if (messageContent.videoMessage) {
     const item = messageContent.videoMessage;
-    body = item.caption || '';
+    caption = item.caption || '';
+    body = caption;
     hasMedia = true;
     mediaType = item.gifPlayback ? 'gif' : 'video';
     nativeType = 'videoMessage';
@@ -386,7 +389,8 @@ export async function extractBridgeEvent({
     await saveMedia({ mediaMessage: item, dir: cacheDirs.audio, prefix: 'aud', fallbackExt: '.ogg', type: 'audio' });
   } else if (messageContent.documentMessage) {
     const item = messageContent.documentMessage;
-    body = item.caption || '';
+    caption = item.caption || '';
+    body = caption;
     hasMedia = true;
     mediaType = 'document';
     nativeType = 'documentMessage';
@@ -469,10 +473,15 @@ export async function extractBridgeEvent({
     messageId: msg.key.id,
     chatId,
     senderId,
+    senderDisplayName: msg.pushName || null,
+    senderPushName: msg.pushName || null,
     senderName: msg.pushName || senderNumber,
+    chatDisplayName: isGroup ? null : (msg.pushName || null),
     chatName: isGroup ? (chatId.split('@')[0]) : (msg.pushName || senderNumber),
+    fromMe: msg.key.fromMe === true,
     isGroup,
     body,
+    caption,
     hasMedia,
     mediaType,
     mime,
