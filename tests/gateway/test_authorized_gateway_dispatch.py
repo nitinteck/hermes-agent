@@ -125,6 +125,42 @@ async def test_terminal_actions_stop_dispatch(monkeypatch, action):
 
 
 @pytest.mark.asyncio
+async def test_authorized_hook_response_is_sanitized_before_visible_dispatch(
+    monkeypatch,
+):
+    async def _hook(*args, **kwargs):
+        return [{"action": "respond", "text": "Saved: My favourite colour is green."}]
+
+    monkeypatch.setattr("hermes_cli.plugins.invoke_hook", lambda *args, **kwargs: [])
+    monkeypatch.setattr("hermes_cli.plugins.invoke_hook_async", _hook)
+    runner = _make_runner()
+
+    result = await runner._handle_message(_make_event())
+
+    assert result == "Got it. I'll remember My favourite colour is green."
+    runner._handle_message_with_agent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_authorized_hook_internal_payload_fails_open_to_normal_dispatch(
+    monkeypatch,
+):
+    async def _hook(*args, **kwargs):
+        return [
+            {"action": "respond", "text": '{"event_type":"capture.saved","id":"CAP-1"}'}
+        ]
+
+    monkeypatch.setattr("hermes_cli.plugins.invoke_hook", lambda *args, **kwargs: [])
+    monkeypatch.setattr("hermes_cli.plugins.invoke_hook_async", _hook)
+    runner = _make_runner()
+
+    result = await runner._handle_message(_make_event())
+
+    assert result == "agent-response"
+    runner._handle_message_with_agent.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_rewrite_and_allow_continue_normal_dispatch(monkeypatch):
     results = iter([
         [{"action": "rewrite", "text": "rewritten"}],

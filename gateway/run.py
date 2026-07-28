@@ -70,6 +70,39 @@ _PLATFORM_CONNECT_TIMEOUT_SECS_DEFAULT = 30.0
 _ADAPTER_DISCONNECT_TIMEOUT_SECS_DEFAULT = 5.0
 _GATEWAY_PROXY_SSE_BUFFER_MAX_CHARS = 16 * 1024 * 1024
 _TELEGRAM_COMMAND_MENTION_RE = re.compile(r"(?<![\w:/])/([A-Za-z0-9][A-Za-z0-9_-]*)")
+_AUTHORIZED_GATEWAY_INTERNAL_PREFIX_RE = re.compile(
+    r"^\s*(?:Saved|Captured|Stored|Memory updated|Capture ID)\s*:\s*(?P<body>.+?)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+_AUTHORIZED_GATEWAY_INTERNAL_TOKENS = (
+    "capture_id",
+    "event_type",
+    "provenance",
+    "stack trace",
+    "traceback",
+)
+
+
+def _sanitize_authorized_gateway_response(text: str) -> str | None:
+    """Final defence before plugin text becomes a user-visible gateway reply."""
+
+    clean = text.strip()
+    if not clean:
+        return None
+    lowered = clean.casefold()
+    if clean.startswith("{") and any(
+        token in lowered for token in _AUTHORIZED_GATEWAY_INTERNAL_TOKENS
+    ):
+        return None
+    if any(token in lowered for token in ("traceback", "stack trace")):
+        return None
+    if match := _AUTHORIZED_GATEWAY_INTERNAL_PREFIX_RE.fullmatch(clean):
+        body = match.group("body").strip()
+        if not body or body.casefold().startswith("cap-"):
+            return None
+        return f"Got it. I'll remember {body}"
+    return clean
+
 
 _TELEGRAM_NOISY_STATUS_RE = re.compile(
     r"("  # transient/auxiliary status that should stay in logs, not gateway chats
@@ -10751,7 +10784,12 @@ class GatewayRunner(
                 if _action == "respond":
                     _response_text = _result.get("text")
                     if isinstance(_response_text, str) and _response_text.strip():
-                        return _response_text
+                        _sanitized_response = _sanitize_authorized_gateway_response(
+                            _response_text
+                        )
+                        if _sanitized_response:
+                            return _sanitized_response
+                        break
                     break
                 if _action == "rewrite":
                     _new_text = _result.get("text")
