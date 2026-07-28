@@ -70,6 +70,38 @@ _PLATFORM_CONNECT_TIMEOUT_SECS_DEFAULT = 30.0
 _ADAPTER_DISCONNECT_TIMEOUT_SECS_DEFAULT = 5.0
 _GATEWAY_PROXY_SSE_BUFFER_MAX_CHARS = 16 * 1024 * 1024
 _TELEGRAM_COMMAND_MENTION_RE = re.compile(r"(?<![\w:/])/([A-Za-z0-9][A-Za-z0-9_-]*)")
+_AUTHORIZED_GATEWAY_INTERNAL_PREFIX_RE = re.compile(
+    r"^\s*(?:Saved|Already saved|Captured|Stored|Memory updated|Capture ID)\s*:\s*(?P<body>.+?)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+_AUTHORIZED_GATEWAY_INTERNAL_TOKENS = (
+    "capture_id",
+    "event_type",
+    "provenance",
+    "stack trace",
+    "traceback",
+)
+
+
+def _sanitize_authorized_gateway_response(text: str) -> str | None:
+    """Final defence before plugin text becomes a user-visible gateway reply."""
+
+    clean = text.strip()
+    if not clean:
+        return None
+    lowered = clean.casefold()
+    if clean.startswith("{") and any(
+        token in lowered for token in _AUTHORIZED_GATEWAY_INTERNAL_TOKENS
+    ):
+        return None
+    if any(token in lowered for token in ("traceback", "stack trace")):
+        return None
+    if match := _AUTHORIZED_GATEWAY_INTERNAL_PREFIX_RE.fullmatch(clean):
+        body = match.group("body").strip()
+        if not body or body.casefold().startswith("cap-"):
+            return None
+        return f"Got it. I'll remember {body}"
+    return clean
 
 _TELEGRAM_NOISY_STATUS_RE = re.compile(
     r"("  # transient/auxiliary status that should stay in logs, not gateway chats
@@ -10150,6 +10182,55 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                     self.pairing_store._record_rate_limit(platform_name, source.user_id)
             return None
         
+        # Give plugins a safe, post-authorization interception point with the
+        # complete MessageEvent. The first recognized result wins. A hook
+        # failure fails open to normal Hermes dispatch.
+        if not is_internal:
+            try:
+                from hermes_cli.plugins import invoke_hook as _invoke_hook
+
+                _authorized_results = _invoke_hook(
+                    "authorized_gateway_dispatch", event=event
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as _hook_exc:
+                logger.warning(
+                    "authorized_gateway_dispatch invocation failed: %s", _hook_exc
+                )
+                _authorized_results = []
+
+            for _result in _authorized_results:
+                if not isinstance(_result, dict):
+                    continue
+                _action = _result.get("action")
+                if _action == "skip":
+                    logger.info(
+                        "authorized_gateway_dispatch skip: reason=%s platform=%s chat=%s",
+                        _result.get("reason"),
+                        source.platform.value if source.platform else "unknown",
+                        source.chat_id or "unknown",
+                    )
+                    return None
+                if _action == "respond":
+                    _response_text = _result.get("text")
+                    if isinstance(_response_text, str) and _response_text.strip():
+                        _sanitized_response = _sanitize_authorized_gateway_response(
+                            _response_text
+                        )
+                        if _sanitized_response:
+                            return _sanitized_response
+                        break
+                    break
+                if _action == "rewrite":
+                    _new_text = _result.get("text")
+                    if isinstance(_new_text, str):
+                        event = dataclasses.replace(event, text=_new_text)
+                        source = event.source
+                    break
+                if _action == "allow":
+                    break
+
         # Intercept messages that are responses to a pending /update prompt.
         # The update process (detached) wrote .update_prompt.json; the watcher
         # forwarded it to the user; now the user's reply goes back via
