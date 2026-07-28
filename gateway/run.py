@@ -10190,7 +10190,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 from hermes_cli.plugins import invoke_hook as _invoke_hook
 
                 _authorized_results = _invoke_hook(
-                    "authorized_gateway_dispatch", event=event
+                    "authorized_gateway_dispatch",
+                    event=event,
+                    gateway=self,
+                    session_store=self.session_store,
                 )
             except asyncio.CancelledError:
                 raise

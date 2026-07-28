@@ -60,6 +60,8 @@ async def test_hook_runs_after_authorization_with_complete_event(monkeypatch):
     def _hook(name, **kwargs):
         assert name == "authorized_gateway_dispatch"
         seen["event"] = kwargs["event"]
+        seen["gateway"] = kwargs["gateway"]
+        seen["session_store"] = kwargs["session_store"]
         return [{"action": "respond", "text": "natural response"}]
 
     monkeypatch.setattr("hermes_cli.plugins.invoke_hook", _hook)
@@ -75,6 +77,8 @@ async def test_hook_runs_after_authorization_with_complete_event(monkeypatch):
     assert seen["event"].message_id == "message-1"
     assert seen["event"].reply_to_message_id == "quoted-1"
     assert seen["event"].reply_to_text == "quoted text"
+    assert seen["gateway"] is runner
+    assert seen["session_store"] is runner.session_store
     assert result == "natural response"
     runner._handle_message_with_agent.assert_not_awaited()
 
