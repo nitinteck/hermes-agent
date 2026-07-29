@@ -419,6 +419,7 @@ from hermes_cli.subcommands.doctor import build_doctor_parser
 from hermes_cli.subcommands.security import build_security_parser
 from hermes_cli.subcommands.dump import build_dump_parser
 from hermes_cli.subcommands.debug import build_debug_parser
+from hermes_cli.subcommands.deploy import build_deploy_parser
 from hermes_cli.subcommands.backup import build_backup_parser
 from hermes_cli.subcommands.import_cmd import build_import_cmd_parser
 from hermes_cli.subcommands.config import build_config_parser
@@ -4448,6 +4449,13 @@ def cmd_status(args):
     from hermes_cli.status import show_status
 
     show_status(args)
+
+
+def cmd_deploy(args):
+    """Run the Hermes deployment pipeline."""
+    from hermes_cli.deployment import cmd_deploy as _cmd_deploy
+
+    return _cmd_deploy(args)
 
 
 def cmd_cron(args):
@@ -13845,6 +13853,11 @@ def main():
     # status command  (parser built in hermes_cli/subcommands/status.py)
     # =========================================================================
     build_status_parser(subparsers, cmd_status=cmd_status)
+
+    # =========================================================================
+    # deploy command  (parser built in hermes_cli/subcommands/deploy.py)
+    # =========================================================================
+    build_deploy_parser(subparsers, cmd_deploy=cmd_deploy)
 
     # =========================================================================
     # cron command  (parser built in hermes_cli/subcommands/cron.py)
