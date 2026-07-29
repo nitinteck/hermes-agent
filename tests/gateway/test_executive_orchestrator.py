@@ -349,6 +349,7 @@ def test_gateway_wrapper_fails_closed_before_model_for_executable_request() -> N
         == "potentially_executable"
     )
     assert result.result["executive_orchestrator"]["correlation_id"].startswith("eo_")
+    assert result.result["executive_orchestrator"]["trace_id"].startswith("trace_")
     assert result.result["executive_orchestrator"]["execution_state"] == "not_executed"
     assert "completed" not in result.result["final_response"].casefold()
     assert "executed" not in result.result["final_response"].casefold()
