@@ -5,6 +5,11 @@
     "hermes_agent_sha": "48a1c95de31dbde6d9a36148e7662bbe93cfa35a",
     "ovos_core_sha": "0e6ee394d26ff2d7a814f3c84e0ed920aaaf5232"
   },
+  "diagnostic_configuration_note": {
+    "accepted_run_orchestrator_enabled": true,
+    "accepted_run_required_env": "HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED=true",
+    "discarded_attempt": "An initial diagnostic attempt ran with orchestrator_enabled=false and was discarded as invalid. Its results are not mixed into this accepted baseline."
+  },
   "external_execution": "not_executed",
   "local_only": true,
   "model": "gpt-4.1-mini",
