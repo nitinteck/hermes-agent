@@ -4,6 +4,22 @@ Last updated: 2026-07-29
 
 ## Registries
 
+Hermes uses domain-specific registries:
+
+- Executive Context Provider Registry
+- Intelligence Registry
+- Connection Registry
+- Capability Registry
+- Integration Adapter Registry
+- future Skill Registry
+
+The Intelligence Registry remains separate because intelligence modules consume
+canonical context and emit signals. They are not integrations, connectors,
+skills, adapters, prompts or actions.
+
+Common conventions include IDs, versions, lifecycle state, health, deterministic
+status, risk and safe trace metadata.
+
 Hermes v1 uses explicit in-process registries for integration metadata:
 
 - `ConnectionRegistry`: supported integrations plus scoped authorised

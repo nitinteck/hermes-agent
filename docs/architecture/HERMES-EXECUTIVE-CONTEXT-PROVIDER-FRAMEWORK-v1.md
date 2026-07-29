@@ -48,6 +48,10 @@ The snapshot is safe for operator diagnostics because it stores identifiers,
 counts, digests, classifications, and provider status. It does not store full
 private messages, phone numbers, secrets, raw prompts, or raw profile content.
 
+Executive Intelligence consumes this snapshot. Providers should not embed
+deterministic executive conclusions such as meeting conflicts, overdue
+commitments or ranked attention signals unless they are explicitly source facts.
+
 ## Built-In Providers
 
 Current production-safe providers:

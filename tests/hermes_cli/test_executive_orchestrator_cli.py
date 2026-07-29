@@ -49,6 +49,11 @@ def test_status_is_operator_safe_and_non_executing(monkeypatch) -> None:
 
     assert status["enabled"] is True
     assert status["executive_context_provider_framework_enabled"] is True
+    assert status["executive_intelligence_engine_enabled"] is True
+    assert status["intelligence_registry_enabled"] is True
+    assert status["deterministic_intelligence_modules_enabled"] is True
+    assert status["inference_intelligence_modules_enabled"] is False
+    assert status["enabled_intelligence_module_count"] >= 7
     assert status["mock_executive_context_provider_enabled"] is False
     assert status["mcp_context_adapter_enabled"] is False
     assert status["execution_boundary"] == "not_executed"

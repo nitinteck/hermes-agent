@@ -16,11 +16,17 @@ ClickUp or other read-only connectors.
 
 ## Current Phase
 
-HERMES MVP v0.2 - READ-ONLY GOOGLE CALENDAR CONTEXT PROVIDER v1.
+HERMES INTEGRATION FRAMEWORK AND EXECUTIVE INTELLIGENCE FOUNDATION v1.
+
+Current foundation capabilities:
+
+- Integration & Connection Framework v1.
+- Google Calendar read-only context provider installed with live reads disabled.
+- Executive Intelligence Engine v1 deterministic and request-scoped.
 
 Next approved milestone:
 
-`HERMES MVP v0.2 - READ-ONLY EXECUTIVE CONTEXT CONNECTORS`
+`Hermes Executive Reasoning Engine v1`
 
 ## Production Architecture
 
@@ -65,9 +71,10 @@ Normal production reasoning turns follow:
 3. `GatewayRunner._run_agent_inner`
 4. `ExecutiveOrchestrator.prepare_turn`
 5. `ExecutiveContextCollectionService`
-6. `AIAgent.run_conversation`
-7. `ExecutiveOrchestrator.observe_response`
-8. existing gateway response delivery
+6. `ExecutiveIntelligenceEngine` when enabled
+7. `AIAgent.run_conversation`
+8. `ExecutiveOrchestrator.observe_response`
+9. existing gateway response delivery
 
 The gateway owns transport, auth, platform normalization, session persistence
 and outbound delivery. The Executive Orchestrator owns classification, bounded
@@ -82,6 +89,8 @@ post-response observation and trace metadata.
 - Google Calendar Executive Context Provider installed as a read-only external
   provider. Live reads remain disabled until user Calendar authorisation and
   operator review are complete.
+- Executive Intelligence Engine v1 on the feature branch, deterministic and
+  request-scoped.
 - Deterministic OVOS hook coexistence where existing gateway dispatch supports
   it.
 - Local Event Journal and Daily Brief data surfaces.
@@ -163,6 +172,10 @@ Production-safe default flags:
 ```bash
 HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED=true
 HERMES_EXECUTIVE_CONTEXT_PROVIDER_FRAMEWORK_ENABLED=true
+HERMES_EXECUTIVE_INTELLIGENCE_ENABLED=true
+HERMES_INTELLIGENCE_REGISTRY_ENABLED=true
+HERMES_DETERMINISTIC_INTELLIGENCE_MODULES_ENABLED=true
+HERMES_INFERENCE_INTELLIGENCE_MODULES_ENABLED=false
 HERMES_EXECUTIVE_CONTEXT_MOCK_PROVIDER_ENABLED=false
 HERMES_MCP_CONTEXT_ADAPTER_ENABLED=false
 ```

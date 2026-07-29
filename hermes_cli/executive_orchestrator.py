@@ -104,6 +104,13 @@ def executive_orchestrator_status() -> dict[str, Any]:
         is_executive_context_provider_framework_enabled,
         is_mcp_context_adapter_enabled,
     )
+    from gateway.executive_intelligence import (
+        are_deterministic_intelligence_modules_enabled,
+        are_inference_intelligence_modules_enabled,
+        build_default_intelligence_registry,
+        is_executive_intelligence_enabled,
+        is_intelligence_registry_enabled,
+    )
     from gateway.google_calendar_context_provider import (
         GoogleCalendarProviderConfig,
         google_calendar_capability_status,
@@ -111,10 +118,22 @@ def executive_orchestrator_status() -> dict[str, Any]:
 
     calendar_config = GoogleCalendarProviderConfig.from_environment()
 
+    intelligence_registry = build_default_intelligence_registry()
     return {
         "enabled": is_executive_orchestrator_enabled(),
         "executive_context_provider_framework_enabled": (
             is_executive_context_provider_framework_enabled()
+        ),
+        "executive_intelligence_engine_enabled": is_executive_intelligence_enabled(),
+        "intelligence_registry_enabled": is_intelligence_registry_enabled(),
+        "deterministic_intelligence_modules_enabled": (
+            are_deterministic_intelligence_modules_enabled()
+        ),
+        "inference_intelligence_modules_enabled": (
+            are_inference_intelligence_modules_enabled()
+        ),
+        "enabled_intelligence_module_count": len(
+            intelligence_registry.enabled_modules(deterministic_only=True)
         ),
         "mock_executive_context_provider_enabled": (
             is_executive_context_mock_provider_enabled()
