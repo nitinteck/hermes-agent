@@ -31,6 +31,16 @@ Dry-run plan:
 hermes deploy
 ```
 
+The default local OVOS checkout is resolved in this order:
+
+1. `HERMES_LOCAL_OVOS_CORE`, `HERMES_OVOS_CORE_PATH` or `OVOS_CORE_PATH` if set;
+2. `/opt/ai-stack/ovos-core` on the VPS;
+3. a sibling `ovos-core` checkout next to `hermes-agent`;
+4. the legacy Hermes Build macOS checkout if it exists.
+
+If the resolved path does not exist, `hermes deploy` fails closed with a clear
+message. It must not silently select a non-existent Mac path on the VPS.
+
 Execute:
 
 ```bash
@@ -87,5 +97,7 @@ The smoke gate checks:
 - EDE-007A controls still expose the Execution Safety Kernel.
 - `hermes executive-orchestrator diagnostic-turn ...` exercises the local
   orchestrator and reasoning path with no outbound platform delivery.
+- `hermes executive-orchestrator trace-lookup ...` can correlate a manual
+  WhatsApp behavioural test with redacted Orchestrator trace metadata.
 
 No live execution adapter is enabled by this pipeline.

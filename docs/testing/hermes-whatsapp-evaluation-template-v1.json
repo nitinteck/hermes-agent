@@ -1,0 +1,23 @@
+{
+  "test_id": "",
+  "timestamp": "",
+  "deployed_hermes_agent_sha": "",
+  "deployed_ovos_core_sha": "",
+  "user_screenshot_reference_or_note": "",
+  "correlation_id": "",
+  "trace_id": "",
+  "request_classification": "",
+  "context_source_counts": {},
+  "response_rating": "",
+  "factual_accuracy": "",
+  "usefulness": "",
+  "clarity": "",
+  "actionability": "",
+  "safety_compliance": "",
+  "hallucination_present": false,
+  "limitation_honesty": "",
+  "pass_fail": "",
+  "defect_reference": "",
+  "reviewer_notes": ""
+}
+

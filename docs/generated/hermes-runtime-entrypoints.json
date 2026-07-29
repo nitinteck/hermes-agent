@@ -1,0 +1,126 @@
+{
+  "generated_at": "2026-07-29T16:14:31Z",
+  "entries": [
+    {
+      "repository": "hermes-agent",
+      "file_path": "hermes_cli/main.py",
+      "purpose": "Top-level Hermes CLI parser and subcommand dispatch",
+      "invoked_by": "hermes CLI and systemd gateway command",
+      "production_relevance": "critical",
+      "validation_command": ".venv/bin/python -m hermes_cli.main --help",
+      "status": "current",
+      "notes": "Use repo venv or Python 3.11+; local system python3 is 3.9 and unsupported."
+    },
+    {
+      "repository": "hermes-agent",
+      "file_path": "gateway/run.py",
+      "purpose": "GatewayRunner message path and AIAgent invocation",
+      "invoked_by": "hermes-gateway.service",
+      "production_relevance": "critical",
+      "validation_command": ".venv/bin/python -m pytest tests/gateway/test_executive_orchestrator.py -q",
+      "status": "current",
+      "notes": "Executive Orchestrator insertion point is inside GatewayRunner._run_agent_inner before AIAgent.run_conversation."
+    },
+    {
+      "repository": "hermes-agent",
+      "file_path": "gateway/executive_orchestrator.py",
+      "purpose": "Pre-reasoning context, classification, safety boundary and trace observation",
+      "invoked_by": "GatewayRunner._run_agent_inner and diagnostic CLI",
+      "production_relevance": "critical",
+      "validation_command": ".venv/bin/python -m pytest tests/gateway/test_executive_orchestrator.py -q",
+      "status": "current",
+      "notes": "No external adapters are invoked; execution_state remains not_executed."
+    },
+    {
+      "repository": "hermes-agent",
+      "file_path": "hermes_cli/executive_orchestrator.py",
+      "purpose": "Operator status, local diagnostic turn and redacted trace lookup",
+      "invoked_by": "hermes executive-orchestrator",
+      "production_relevance": "high",
+      "validation_command": ".venv/bin/python -m pytest tests/hermes_cli/test_executive_orchestrator_cli.py -q",
+      "status": "current",
+      "notes": "Diagnostic ingress is local CLI only and does not deliver platform messages."
+    },
+    {
+      "repository": "hermes-agent",
+      "file_path": "hermes_cli/deployment.py",
+      "purpose": "Fail-closed Hermes VPS deployment pipeline",
+      "invoked_by": "hermes deploy",
+      "production_relevance": "critical",
+      "validation_command": ".venv/bin/python -m pytest tests/hermes_cli/test_deployment_pipeline.py -q",
+      "status": "current",
+      "notes": "Default OVOS path is environment-aware and fails clearly if unavailable."
+    },
+    {
+      "repository": "hermes-agent",
+      "file_path": "hermes_cli/subcommands/deploy.py",
+      "purpose": "Argument parser for hermes deploy",
+      "invoked_by": "hermes_cli.main",
+      "production_relevance": "high",
+      "validation_command": ".venv/bin/python -m hermes_cli.main deploy --help",
+      "status": "current",
+      "notes": "--local-ovos-core defaults to runtime resolution rather than a Mac path."
+    },
+    {
+      "repository": "hermes-agent",
+      "file_path": "gateway/readiness.py",
+      "purpose": "Runtime readiness and Orchestrator feature flag status",
+      "invoked_by": "gateway status/readiness tooling",
+      "production_relevance": "high",
+      "validation_command": ".venv/bin/python -m pytest tests/gateway/test_readiness.py -q",
+      "status": "current",
+      "notes": "Reports Orchestrator enabled state and execution_boundary without secrets."
+    },
+    {
+      "repository": "hermes-agent",
+      "file_path": "scripts/whatsapp-bridge/bridge.js",
+      "purpose": "Local WhatsApp bridge process",
+      "invoked_by": "GatewayRunner child process on production",
+      "production_relevance": "critical",
+      "validation_command": "ps -eo pid,ppid,comm,args | grep bridge.js",
+      "status": "current",
+      "notes": "Connected bridge is required for real WhatsApp behavioural testing."
+    },
+    {
+      "repository": "ovos-core",
+      "file_path": "ovos_core/ede/cli.py",
+      "purpose": "EDE planning, approval, Event Journal, Daily Brief and Safety Kernel CLI",
+      "invoked_by": "deployment smoke tests and operator diagnostics",
+      "production_relevance": "high",
+      "validation_command": "python -m ovos_core.ede.cli execution targets list",
+      "status": "current",
+      "notes": "Execution targets report live adapter: none."
+    },
+    {
+      "repository": "ovos-core",
+      "file_path": "ovos_core/ede/daily_brief.py",
+      "purpose": "Declarative Daily Brief generation",
+      "invoked_by": "EDE CLI and deployment smoke tests",
+      "production_relevance": "high",
+      "validation_command": "pytest tests/test_hermes_daily_brief.py tests/test_hermes_daily_brief_cli.py -q",
+      "status": "current",
+      "notes": "Generated actions remain approved_not_executable and not_executed."
+    },
+    {
+      "repository": "ovos-core",
+      "file_path": "ovos_core/ede/event_journal.py",
+      "purpose": "Event Journal storage and listing",
+      "invoked_by": "EDE CLI and Orchestrator local context store",
+      "production_relevance": "high",
+      "validation_command": "pytest tests/test_hermes_event_journal.py -q",
+      "status": "current",
+      "notes": "Records are declarative; full private prompts are not required by Orchestrator traces."
+    },
+    {
+      "repository": "ovos-core",
+      "file_path": "supabase/migrations/20260729130000_hermes_mvp_event_journal_daily_brief.sql",
+      "purpose": "Current production Event Journal and Daily Brief schema",
+      "invoked_by": "Supabase migration runner",
+      "production_relevance": "critical",
+      "validation_command": "npx supabase migration list --linked",
+      "status": "current",
+      "notes": "Production migration list is current through 20260729130000."
+    }
+  ]
+}
+

@@ -33,7 +33,7 @@ def build_deploy_parser(subparsers, *, cmd_deploy: Callable) -> None:
     )
     deploy.add_argument(
         "--local-ovos-core",
-        default="/Users/nitinteckchandani/Projects/Hermes-Build/ovos-core",
+        default=None,
         help="Local OVOS Core checkout used for validation and expected commit.",
     )
     deploy.add_argument(

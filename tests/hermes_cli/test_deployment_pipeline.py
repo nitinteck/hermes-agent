@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+from argparse import Namespace
 from pathlib import Path
 
 from hermes_cli.deployment import (
     CommandResult,
     DeploymentConfig,
     DeploymentPipeline,
+    _default_local_ovos_core,
     _ssh_command,
+    cmd_deploy,
 )
 
 
@@ -165,3 +168,46 @@ def test_remote_fetch_can_use_explicit_repo_url(tmp_path: Path) -> None:
 
     assert "create local ovos deploy bundle" not in plan
     assert "fetch --force https://example.test/ovos-core.git" in plan
+
+
+def test_default_local_ovos_core_prefers_vps_path_over_mac_path() -> None:
+    def exists(path: Path) -> bool:
+        return str(path) == "/opt/ai-stack/ovos-core"
+
+    assert _default_local_ovos_core(path_exists=exists) == Path(
+        "/opt/ai-stack/ovos-core"
+    )
+
+
+def test_deploy_fails_closed_when_default_local_ovos_core_unavailable(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    missing = tmp_path / "missing-ovos-core"
+    monkeypatch.setenv("HERMES_LOCAL_OVOS_CORE", str(missing))
+
+    rc = cmd_deploy(
+        Namespace(
+            execute=False,
+            expected_ovos_commit=None,
+            local_ovos_core=None,
+            local_ovos_python=None,
+            remote_host="hermes-vps",
+            remote_ovos_core="/opt/ai-stack/ovos-core",
+            remote_hermes_agent="/opt/ai-stack/hermes-agent",
+            remote_ovos_repo_url=None,
+            report_file=None,
+            service="hermes-gateway.service",
+            skip_local_validation=True,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 1
+    assert payload["status"] == "failed"
+    assert str(missing) in payload["error"]
+    assert (
+        "/Users/nitinteckchandani/Projects/Hermes-Build/ovos-core"
+        not in payload["error"]
+    )
