@@ -234,6 +234,8 @@ def test_executive_response_guidance_is_concise_and_evidence_aware() -> None:
     assert "Known facts" in prepared.reasoning_message
     assert "Inferences" in prepared.reasoning_message
     assert "Missing information" in prepared.reasoning_message
+    assert "persistent profile context is available" in prepared.reasoning_message
+    assert "source category" in prepared.reasoning_message
     assert "Do not end every response with a question" in prepared.reasoning_message
     assert "unsupported remembered commitments or risks" in prepared.reasoning_message
 
