@@ -126,6 +126,8 @@ def test_health_requires_hermes_mvp_migration(tmp_path: Path) -> None:
     plan = "\n".join(pipeline.plan())
 
     assert "grep -q 20260729130000" in plan
+    assert "--quiet" not in plan
+    assert "systemctl --user is-active hermes-gateway.service" in plan
 
 
 def test_ssh_command_quotes_remote_script_as_single_shell_argument() -> None:

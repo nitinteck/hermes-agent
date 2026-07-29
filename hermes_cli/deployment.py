@@ -203,7 +203,7 @@ def _health_script(config: DeploymentConfig) -> str:
     expected = shlex.quote(config.expected_ovos_commit or "")
     return (
         "set -eu; "
-        f"systemctl --user is-active --quiet {service}; "
+        f'test "$(systemctl --user is-active {service})" = active; '
         f"pgrep -af 'hermes_cli.main gateway run' >/dev/null; "
         f"{_safe_remote_env_names(config)}; "
         f"cd {ovos}; npx supabase migration list --linked >/tmp/hermes-deploy-migrations.txt; "
@@ -525,7 +525,8 @@ class DeploymentPipeline:
                 "wait for healthy service",
                 remote_script=(
                     f"set -eu; for i in $(seq 1 30); do "
-                    f"systemctl --user is-active --quiet {shlex.quote(config.service)} && exit 0; "
+                    f"state=$(systemctl --user is-active {shlex.quote(config.service)} || true); "
+                    'test "$state" = active && exit 0; '
                     "sleep 2; done; systemctl --user status "
                     f"{shlex.quote(config.service)} --no-pager --lines=40; exit 1"
                 ),
