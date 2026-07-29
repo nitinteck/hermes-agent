@@ -10,12 +10,13 @@ document is the first place to check for current production behaviour.
 
 Hermes is Nitin's intelligent WhatsApp personal assistant. The current product
 focus is behavioural readiness: prove the existing Executive Orchestrator,
-OVOS/EDE context, Daily Brief, Event Journal and Safety Kernel behave reliably
-before adding Gmail, Google Calendar, ClickUp or other read-only connectors.
+OVOS/EDE context, Daily Brief, Event Journal, Safety Kernel and first
+read-only Calendar context provider behave reliably before adding Gmail,
+ClickUp or other read-only connectors.
 
 ## Current Phase
 
-HERMES LAYERED ARCHITECTURE AND EXECUTIVE CONTEXT FOUNDATION v1.
+HERMES MVP v0.2 - READ-ONLY GOOGLE CALENDAR CONTEXT PROVIDER v1.
 
 Next approved milestone:
 
@@ -78,6 +79,9 @@ post-response observation and trace metadata.
 - WhatsApp ingress through the existing bridge.
 - Executive Orchestrator enabled for normal production chat.
 - Executive Context Provider Framework enabled for bounded local context.
+- Google Calendar Executive Context Provider installed as a read-only external
+  provider. Live reads remain disabled until user Calendar authorisation and
+  operator review are complete.
 - Deterministic OVOS hook coexistence where existing gateway dispatch supports
   it.
 - Local Event Journal and Daily Brief data surfaces.
@@ -91,7 +95,6 @@ post-response observation and trace metadata.
 Hermes currently has no live connector for:
 
 - Gmail
-- Google Calendar
 - ClickUp
 - Slack
 - CRM records
@@ -100,9 +103,12 @@ Hermes currently has no live connector for:
 - holidays or travel bookings
 - live external execution
 
-Hermes must not claim it can see meetings, email, ClickUp tasks, news,
-portfolio positions or bookings unless that information is already present in
-current OVOS context.
+Google Calendar has a read-only provider but must report authorisation status
+precisely. Hermes must not claim it can see meetings unless live Calendar reads
+are authorised or the meeting information is already present in current OVOS
+context. Hermes must not claim it can see email, ClickUp tasks, news, portfolio
+positions or bookings unless that information is already present in current
+OVOS context.
 
 ## Executive Context Sources
 
@@ -118,6 +124,8 @@ The current Orchestrator uses only local and persistent Hermes/OVOS data:
 - risk-like records
 - opportunity-like records
 - deterministic OVOS command output when supplied
+- Google Calendar schedule context when the Calendar provider is selected and
+  live reads are authorised
 
 No new read-only connectors are active in this phase.
 

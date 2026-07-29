@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import time
+from typing import Any
+
+import pytest
 
 from gateway.executive_orchestrator import (
     ExecutiveOrchestrator,
@@ -9,10 +12,12 @@ from gateway.executive_orchestrator import (
     NoopExecutiveContextProvider,
 )
 from hermes_cli.executive_orchestrator import (
+    DiagnosticProviderConfigurationError,
     executive_orchestrator_status,
     lookup_executive_traces,
     run_local_behavioural_pack,
     run_local_diagnostic_turn,
+    validate_diagnostic_runtime_provider,
 )
 
 
@@ -21,7 +26,7 @@ class FakeDiagnosticAgent:
     model = "gpt-4.1-mini"
 
     def __init__(self) -> None:
-        self.calls = []
+        self.calls: list[tuple[Any, dict[str, Any]]] = []
         self.closed = False
 
     def run_conversation(self, message, **kwargs):  # noqa: ANN001
@@ -36,6 +41,9 @@ def test_status_is_operator_safe_and_non_executing(monkeypatch) -> None:
     monkeypatch.setenv("HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED", "true")
     monkeypatch.delenv("HERMES_EXECUTIVE_CONTEXT_MOCK_PROVIDER_ENABLED", raising=False)
     monkeypatch.delenv("HERMES_MCP_CONTEXT_ADAPTER_ENABLED", raising=False)
+    monkeypatch.delenv("HERMES_GOOGLE_CALENDAR_TOKEN_FILE", raising=False)
+    monkeypatch.setenv("HERMES_GOOGLE_CALENDAR_CONTEXT_PROVIDER_ENABLED", "true")
+    monkeypatch.setenv("HERMES_GOOGLE_CALENDAR_LIVE_READS_ENABLED", "false")
 
     status = executive_orchestrator_status()
 
@@ -45,8 +53,17 @@ def test_status_is_operator_safe_and_non_executing(monkeypatch) -> None:
     assert status["mcp_context_adapter_enabled"] is False
     assert status["execution_boundary"] == "not_executed"
     assert status["live_execution_enabled"] is False
+    assert status["google_calendar_context_provider_enabled"] is True
+    assert status["google_calendar_live_reads_enabled"] is False
+    assert status["google_calendar_descriptions_enabled"] is False
+    assert status["google_calendar_write_capability_enabled"] is False
+    assert (
+        status["google_calendar_authorisation_status"]
+        == "configured_awaiting_live_read_enablement"
+    )
     assert status["diagnostic_ingress"] == "local_cli_only"
     assert status["outbound_platform_delivery"] is False
+    assert "TOKEN" not in json.dumps(status).upper()
 
 
 def test_local_diagnostic_turn_uses_orchestrator_without_outbound_delivery(
@@ -135,6 +152,43 @@ def test_local_diagnostic_turn_can_explicitly_cover_disabled_mode(monkeypatch) -
     assert result["status"] == "disabled"
     assert result["enabled"] is False
     assert agent.calls
+
+
+def test_diagnostic_runtime_preflight_rejects_openrouter_without_credentials() -> None:
+    with pytest.raises(DiagnosticProviderConfigurationError) as exc:
+        validate_diagnostic_runtime_provider({
+            "provider": "openrouter",
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key": "",
+        })
+
+    assert exc.value.reason_code == "missing_credentials"
+    assert "openrouter" in exc.value.safe_payload()["provider"]
+    assert "api_key" not in json.dumps(exc.value.safe_payload()).casefold()
+
+
+def test_local_diagnostic_turn_isolates_provider_auth_failure(monkeypatch) -> None:
+    monkeypatch.setenv("HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED", "true")
+
+    def build_agent():
+        raise DiagnosticProviderConfigurationError(
+            provider="openrouter",
+            base_url="https://openrouter.ai/api/v1",
+            reason_code="missing_credentials",
+            safe_summary="OpenRouter API key is not configured.",
+        )
+
+    result = run_local_diagnostic_turn(
+        "Hermes, are you online?",
+        agent_factory=build_agent,
+    )
+
+    assert result["status"] == "invalid"
+    assert result["invalid_reason"] == "reasoning_provider_authentication_failed"
+    assert result["provider"] == "openrouter"
+    assert result["external_execution"] == "not_executed"
+    assert result["outbound_platform_delivery"] is False
+    assert result["no_execution_confirmed"] is True
 
 
 def test_behavioural_pack_fails_fast_when_orchestrator_disabled(monkeypatch) -> None:

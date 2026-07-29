@@ -425,6 +425,34 @@ def test_potentially_executable_request_fails_closed_and_never_marks_executable(
     assert exc.value.execution_state == "not_executed"
 
 
+def test_calendar_capability_question_reports_read_only_status_without_execution(
+    monkeypatch, tmp_path
+) -> None:
+    token_file = tmp_path / "google-calendar-token.json"
+    token_file.write_text('{"access_token":"test-token"}\n', encoding="utf-8")
+    monkeypatch.setenv("HERMES_GOOGLE_CALENDAR_CONTEXT_PROVIDER_ENABLED", "true")
+    monkeypatch.setenv("HERMES_GOOGLE_CALENDAR_LIVE_READS_ENABLED", "true")
+    monkeypatch.setenv("HERMES_GOOGLE_CALENDAR_TOKEN_FILE", str(token_file))
+    orchestrator = ExecutiveOrchestrator(
+        context_provider=NoopExecutiveContextProvider(),
+        trace_sink=InMemoryExecutiveTraceSink(),
+    )
+
+    with pytest.raises(OrchestratorError) as exc:
+        orchestrator.prepare_turn(
+            _turn("Can you read my Gmail, Calendar or ClickUp today? Be precise.")
+        )
+
+    safe_response = exc.value.safe_response or ""
+    assert exc.value.classification == "potentially_executable"
+    assert exc.value.execution_state == "not_executed"
+    assert "Google Calendar read-only context is connected" in safe_response
+    assert "Gmail is not connected" in safe_response
+    assert "ClickUp is not connected" in safe_response
+    assert "cannot send, create, modify or delete" in safe_response
+    assert "test-token" not in safe_response
+
+
 def test_malicious_shell_like_parameters_fail_closed_as_inert_data() -> None:
     orchestrator = ExecutiveOrchestrator(
         context_provider=NoopExecutiveContextProvider(),
@@ -568,6 +596,7 @@ def test_gateway_wrapper_uses_prepared_reasoning_message_when_enabled() -> None:
     assert result.result["final_response"] == "executive answer"
     assert len(agent.calls) == 1
     prompt, kwargs = agent.calls[0]
+    prompt = str(prompt)
     assert "EXECUTIVE ORCHESTRATOR CONTEXT" in prompt
     assert "What is our status?" in prompt
     assert kwargs["task_id"] == "session-1"
