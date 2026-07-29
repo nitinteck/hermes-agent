@@ -4,12 +4,22 @@ Last updated: 2026-07-29
 
 ## Current Milestone
 
-`HERMES LAYERED ARCHITECTURE AND EXECUTIVE CONTEXT FOUNDATION v1`
+`HERMES EXECUTIVE REASONING ENGINE v1`
 
-Completion means the layered architecture is documented and the Executive
-Context Provider Framework v1 is implemented, validated, merged and deployed.
+Completion means deterministic `ReasoningPlan` and `ResponsePlan` contracts are
+implemented, validated, merged and deployed in the normal Orchestrator path.
 
 ## Next Milestone
+
+`HERMES EXECUTIVE PLANNING ENGINE v1`
+
+Scope:
+
+- turn safe reasoning plans into non-executing planning drafts
+- preserve approval and execution boundaries
+- keep live external execution disabled
+
+## Later Milestone
 
 `HERMES MVP v0.2 - READ-ONLY EXECUTIVE CONTEXT CONNECTORS`
 
@@ -31,7 +41,7 @@ Safety boundaries:
 - no live execution
 - no public chat API
 
-## Later Milestone
+## Future Execution Milestone
 
 Controlled external execution remains a separate future milestone after
 read-only context is stable. It must use the existing Execution Safety Kernel

@@ -111,6 +111,13 @@ def executive_orchestrator_status() -> dict[str, Any]:
         is_executive_intelligence_enabled,
         is_intelligence_registry_enabled,
     )
+    from gateway.executive_reasoning import (
+        is_ai_provider_selection_enabled,
+        is_executive_reasoning_engine_enabled,
+        is_planning_engine_enabled,
+        is_reasoning_planner_enabled,
+        is_skill_selection_enabled,
+    )
     from gateway.google_calendar_context_provider import (
         GoogleCalendarProviderConfig,
         google_calendar_capability_status,
@@ -135,6 +142,11 @@ def executive_orchestrator_status() -> dict[str, Any]:
         "enabled_intelligence_module_count": len(
             intelligence_registry.enabled_modules(deterministic_only=True)
         ),
+        "executive_reasoning_engine_enabled": (is_executive_reasoning_engine_enabled()),
+        "reasoning_planner_enabled": is_reasoning_planner_enabled(),
+        "skill_selection_enabled": is_skill_selection_enabled(),
+        "ai_provider_selection_enabled": is_ai_provider_selection_enabled(),
+        "planning_engine_enabled": is_planning_engine_enabled(),
         "mock_executive_context_provider_enabled": (
             is_executive_context_mock_provider_enabled()
         ),
@@ -632,6 +644,8 @@ def _summarise_trace_matches(
             "model": latest.get("model"),
             "context_digest": latest.get("context_digest"),
             "context_source_counts": latest.get("context_source_counts") or {},
+            "reasoning_plan": _safe_reasoning_trace(latest.get("reasoning_plan")),
+            "response_plan": _safe_response_trace(latest.get("response_plan")),
             "message_digest": latest.get("message_digest"),
             "response_digest": latest.get("response_digest"),
             "stages": [item.get("stage") for item in ordered if item.get("stage")],
@@ -644,6 +658,34 @@ def _summarise_trace_matches(
         key=lambda item: int(item.get("recorded_at_last") or 0), reverse=True
     )
     return summaries[:limit]
+
+
+def _safe_reasoning_trace(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        "plan_id": value.get("plan_id"),
+        "reasoning_mode": value.get("reasoning_mode"),
+        "selected_skills": list(value.get("selected_skills") or []),
+        "selected_provider": value.get("selected_provider"),
+        "confidence_by_claim": dict(value.get("confidence_by_claim") or {}),
+        "execution_required": value.get("execution_required"),
+        "execution_permitted": value.get("execution_permitted"),
+        "skill_execution": value.get("skill_execution"),
+    }
+
+
+def _safe_response_trace(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        "plan_id": value.get("plan_id"),
+        "reasoning_mode": value.get("reasoning_mode"),
+        "selected_model": value.get("selected_model"),
+        "expected_structure": list(value.get("expected_structure") or []),
+        "execution_required": value.get("execution_required"),
+        "execution_permitted": value.get("execution_permitted"),
+    }
 
 
 def cmd_status(args: Any) -> None:

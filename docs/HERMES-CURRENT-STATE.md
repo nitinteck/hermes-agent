@@ -16,17 +16,19 @@ ClickUp or other read-only connectors.
 
 ## Current Phase
 
-HERMES INTEGRATION FRAMEWORK AND EXECUTIVE INTELLIGENCE FOUNDATION v1.
+HERMES EXECUTIVE REASONING ENGINE v1.
 
 Current foundation capabilities:
 
 - Integration & Connection Framework v1.
 - Google Calendar read-only context provider installed with live reads disabled.
 - Executive Intelligence Engine v1 deterministic and request-scoped.
+- Executive Reasoning Engine v1 with explicit ReasoningPlan and ResponsePlan
+  contracts.
 
 Next approved milestone:
 
-`Hermes Executive Reasoning Engine v1`
+`Hermes Executive Planning Engine v1`
 
 ## Production Architecture
 
@@ -72,9 +74,10 @@ Normal production reasoning turns follow:
 4. `ExecutiveOrchestrator.prepare_turn`
 5. `ExecutiveContextCollectionService`
 6. `ExecutiveIntelligenceEngine` when enabled
-7. `AIAgent.run_conversation`
-8. `ExecutiveOrchestrator.observe_response`
-9. existing gateway response delivery
+7. `ExecutiveReasoningEngine` when enabled
+8. `AIAgent.run_conversation`
+9. `ExecutiveOrchestrator.observe_response`
+10. existing gateway response delivery
 
 The gateway owns transport, auth, platform normalization, session persistence
 and outbound delivery. The Executive Orchestrator owns classification, bounded
@@ -89,8 +92,9 @@ post-response observation and trace metadata.
 - Google Calendar Executive Context Provider installed as a read-only external
   provider. Live reads remain disabled until user Calendar authorisation and
   operator review are complete.
-- Executive Intelligence Engine v1 on the feature branch, deterministic and
-  request-scoped.
+- Executive Intelligence Engine v1 deterministic and request-scoped.
+- Executive Reasoning Engine v1 creates deterministic reasoning and response
+  plans before the LLM call.
 - Deterministic OVOS hook coexistence where existing gateway dispatch supports
   it.
 - Local Event Journal and Daily Brief data surfaces.
@@ -176,6 +180,11 @@ HERMES_EXECUTIVE_INTELLIGENCE_ENABLED=true
 HERMES_INTELLIGENCE_REGISTRY_ENABLED=true
 HERMES_DETERMINISTIC_INTELLIGENCE_MODULES_ENABLED=true
 HERMES_INFERENCE_INTELLIGENCE_MODULES_ENABLED=false
+HERMES_EXECUTIVE_REASONING_ENGINE_ENABLED=true
+HERMES_REASONING_PLANNER_ENABLED=true
+HERMES_SKILL_SELECTION_ENABLED=true
+HERMES_AI_PROVIDER_SELECTION_ENABLED=true
+HERMES_PLANNING_ENGINE_ENABLED=false
 HERMES_EXECUTIVE_CONTEXT_MOCK_PROVIDER_ENABLED=false
 HERMES_MCP_CONTEXT_ADAPTER_ENABLED=false
 ```
@@ -210,6 +219,10 @@ external execution occurred are rewritten to the same boundary message.
 Action proposals, execution requests, handoff drafts and Daily Brief generated
 actions remain declarative and non-executable.
 
+The Executive Reasoning Engine may select skill labels and provider
+abstractions for the response plan, but `skill_execution=selected_not_executed`
+and `execution_permitted=false` remain mandatory.
+
 ## Test Status
 
 Focused Orchestrator, readiness, deployment and trace-correlation tests pass in
@@ -238,6 +251,8 @@ systemctl --user show hermes-gateway.service -p ActiveState -p SubState -p ExecM
 git -C /opt/ai-stack/hermes-agent rev-parse HEAD
 git -C /opt/ai-stack/ovos-core rev-parse HEAD
 /opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main executive-orchestrator status
+/opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main reasoning status
+/opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main reasoning diagnostics
 /opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main executive-orchestrator diagnostic-turn "Hermes diagnostic: confirm orchestrator health."
 /opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main executive-orchestrator trace-lookup --approx-timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --window-seconds 900
 cd /opt/ai-stack/ovos-core && npx supabase migration list --linked
