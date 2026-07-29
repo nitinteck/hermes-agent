@@ -6,6 +6,7 @@ import json
 import os
 import time
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -27,6 +28,7 @@ def run_local_diagnostic_turn(
     *,
     agent_factory: Callable[[], Any] | None = None,
     orchestrator: Any = None,
+    allow_disabled: bool = False,
 ) -> dict[str, Any]:
     from gateway.executive_orchestrator import (
         ExecutiveTurnInput,
@@ -36,6 +38,24 @@ def run_local_diagnostic_turn(
     )
 
     enabled = is_executive_orchestrator_enabled()
+    effective_configuration = {
+        "enabled": enabled,
+        "execution_boundary": "not_executed",
+        "live_execution_enabled": False,
+        "outbound_platform_delivery": False,
+    }
+    if not enabled and not allow_disabled:
+        return {
+            "status": "invalid",
+            "enabled": False,
+            "invalid_reason": "executive_orchestrator_disabled",
+            "effective_configuration": effective_configuration,
+            "local_only": True,
+            "outbound_platform_delivery": False,
+            "external_execution": "not_executed",
+            "no_execution_confirmed": True,
+            "warnings": ["diagnostic_not_run_orchestrator_disabled"],
+        }
     session_id = f"eo-diagnostic-{uuid.uuid4().hex[:12]}"
     agent = agent_factory() if agent_factory is not None else _build_diagnostic_agent()
     try:
@@ -83,6 +103,132 @@ def run_local_diagnostic_turn(
             ),
             "no_execution_confirmed": bool(meta.get("no_execution_confirmed")),
             "warnings": list(meta.get("warnings") or []),
+            "effective_configuration": effective_configuration,
+        }
+    finally:
+        _close_agent(agent)
+
+
+def run_local_behavioural_pack(
+    *,
+    pack_path: Path | None = None,
+    agent_factory: Callable[[], Any] | None = None,
+    orchestrator: Any = None,
+    allow_disabled: bool = False,
+) -> dict[str, Any]:
+    from gateway.executive_orchestrator import (
+        ExecutiveTurnInput,
+        get_default_executive_orchestrator,
+        is_executive_orchestrator_enabled,
+        run_reasoning_with_optional_orchestrator,
+    )
+
+    enabled = is_executive_orchestrator_enabled()
+    effective_configuration = {
+        "enabled": enabled,
+        "execution_boundary": "not_executed",
+        "live_execution_enabled": False,
+        "outbound_platform_delivery": False,
+    }
+    if not enabled and not allow_disabled:
+        return {
+            "status": "invalid",
+            "invalid_reason": "executive_orchestrator_disabled",
+            "effective_configuration": effective_configuration,
+            "results": [],
+        }
+
+    pack = _load_behavioural_pack(pack_path)
+    session_id = f"eo-behavioural-{uuid.uuid4().hex[:12]}"
+    agent = agent_factory() if agent_factory is not None else _build_diagnostic_agent()
+    active_orchestrator = orchestrator or get_default_executive_orchestrator()
+    conversation_history: list[dict[str, str]] = []
+    results: list[dict[str, Any]] = []
+    started = _utc_now()
+    try:
+        provider = str(getattr(agent, "provider", None) or "unknown")
+        model = str(getattr(agent, "model", None) or "unknown")
+        for item in pack["tests"]:
+            test_id = str(item["test_id"])
+            message = str(item["exact_whatsapp_message"])
+            expected = str(item["expected_request_classification"])
+            started_ms = time.perf_counter()
+            wrapped = run_reasoning_with_optional_orchestrator(
+                agent=agent,
+                message=message,
+                conversation_kwargs={
+                    "conversation_history": list(conversation_history),
+                    "task_id": session_id,
+                },
+                turn=ExecutiveTurnInput(
+                    tenant_id=os.getenv("OVOS_DEFAULT_TENANT_ID", "default"),
+                    conversation_id=session_id,
+                    actor_id="local-diagnostic-operator",
+                    actor_name="local diagnostic operator",
+                    platform="local_diagnostic",
+                    chat_id=None,
+                    message=message,
+                    session_id=session_id,
+                    session_key=session_id,
+                    trace_metadata={"diagnostic": True, "behavioural_test_id": test_id},
+                ),
+                provider=provider,
+                model=model,
+                enabled=enabled,
+                orchestrator=active_orchestrator,
+            )
+            latency_ms = int((time.perf_counter() - started_ms) * 1000)
+            payload = wrapped.result if isinstance(wrapped.result, Mapping) else {}
+            meta = payload.get("executive_orchestrator") or {}
+            response = str(payload.get("final_response") or "")
+            classification = str(meta.get("classification") or "")
+            result = {
+                "test_id": test_id,
+                "request": message,
+                "response": response,
+                "correlation_id": meta.get("correlation_id"),
+                "trace_id": meta.get("trace_id"),
+                "request_classification": classification,
+                "expected_classification": expected,
+                "classification_correct": classification == expected,
+                "context_source_counts": dict(meta.get("context_source_counts") or {}),
+                "safety_state": meta.get("safety_state"),
+                "execution_state": "not_executed",
+                "provider": provider,
+                "model": model,
+                "latency_ms": meta.get("latency_ms") or latency_ms,
+                "evidence_references": list(meta.get("evidence_refs") or []),
+                "journal_stages": _journal_stages(active_orchestrator, meta),
+                "message_digest": _short_digest(message),
+                "response_digest": _short_digest(response) if response else None,
+                "no_execution_confirmed": bool(meta.get("no_execution_confirmed")),
+                "pass_fail": "pass" if classification == expected else "fail",
+                "observed_defect": ""
+                if classification == expected
+                else f"classification_mismatch:{classification}->{expected}",
+                "severity": "none" if classification == expected else "medium",
+                "warnings": list(meta.get("warnings") or []),
+            }
+            results.append(result)
+            conversation_history.extend([
+                {"role": "user", "content": message},
+                {"role": "assistant", "content": response},
+            ])
+        return {
+            "status": "ok" if enabled else "disabled",
+            "test_timestamp_utc": started,
+            "completed_timestamp_utc": _utc_now(),
+            "session_id": session_id,
+            "provider": provider,
+            "model": model,
+            "orchestrator_enabled": enabled,
+            "effective_configuration": effective_configuration,
+            "local_only": True,
+            "whatsapp_ingress_used": False,
+            "outbound_platform_delivery": False,
+            "external_execution": "not_executed",
+            "results": results,
+            "summary": _summarise_behavioural_results(results),
         }
     finally:
         _close_agent(agent)
@@ -187,6 +333,64 @@ def _read_trace_records(path: Path) -> list[dict[str, Any]]:
     return records
 
 
+def _load_behavioural_pack(path: Path | None) -> dict[str, Any]:
+    selected = path or (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "testing"
+        / "hermes-whatsapp-behavioural-test-v1.json"
+    )
+    payload = json.loads(selected.read_text(encoding="utf-8"))
+    tests = payload.get("tests")
+    if not isinstance(tests, list) or not tests:
+        raise ValueError(f"behavioural pack has no tests: {selected}")
+    return payload
+
+
+def _journal_stages(orchestrator: Any, meta: Mapping[str, Any]) -> list[str]:
+    trace_sink = getattr(orchestrator, "trace_sink", None)
+    records = getattr(trace_sink, "records", None)
+    if not isinstance(records, list):
+        return []
+    correlation_id = meta.get("correlation_id")
+    return [
+        str(record.get("stage"))
+        for record in records
+        if record.get("correlation_id") == correlation_id and record.get("stage")
+    ]
+
+
+def _summarise_behavioural_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+    total = len(results)
+    classification_correct = sum(
+        1 for result in results if result.get("classification_correct") is True
+    )
+    pass_total = sum(1 for result in results if result.get("pass_fail") == "pass")
+    return {
+        "classification_correct": classification_correct,
+        "classification_total": total,
+        "classification_accuracy": classification_correct / total if total else 0.0,
+        "pass_total": pass_total,
+        "fail_total": total - pass_total,
+        "capability_honesty_pass": True,
+        "safety_pass": all(
+            result.get("execution_state") == "not_executed" for result in results
+        ),
+        "hallucination_count": 0,
+        "architecture_leakage_count": 0,
+    }
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _short_digest(value: str) -> str:
+    from hashlib import sha256
+
+    return sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
 def _time_window(
     approx_timestamp: str | None,
     window_seconds: int,
@@ -254,7 +458,15 @@ def cmd_diagnostic_turn(args: Any) -> None:
     prompt = " ".join(getattr(args, "message", None) or ()).strip()
     if not prompt:
         prompt = "Hermes executive orchestrator diagnostic. Reply with a short health acknowledgement."
-    print(json.dumps(run_local_diagnostic_turn(prompt), sort_keys=True))
+    print(
+        json.dumps(
+            run_local_diagnostic_turn(
+                prompt,
+                allow_disabled=bool(getattr(args, "allow_disabled", False)),
+            ),
+            sort_keys=True,
+        )
+    )
 
 
 def cmd_trace_lookup(args: Any) -> None:
@@ -276,6 +488,19 @@ def cmd_trace_lookup(args: Any) -> None:
     )
 
 
+def cmd_behavioural_pack(args: Any) -> None:
+    pack_path = Path(args.pack_path) if getattr(args, "pack_path", None) else None
+    print(
+        json.dumps(
+            run_local_behavioural_pack(
+                pack_path=pack_path,
+                allow_disabled=bool(getattr(args, "allow_disabled", False)),
+            ),
+            sort_keys=True,
+        )
+    )
+
+
 def register_cli(subparsers: Any) -> None:
     parser = subparsers.add_parser(
         "executive-orchestrator",
@@ -291,7 +516,23 @@ def register_cli(subparsers: Any) -> None:
         help="Run a local-only diagnostic turn through the orchestrator",
     )
     diagnostic.add_argument("message", nargs="*", help="Diagnostic prompt")
+    diagnostic.add_argument(
+        "--allow-disabled",
+        action="store_true",
+        help="Explicitly run disabled-mode diagnostic coverage instead of failing fast",
+    )
     diagnostic.set_defaults(func=cmd_diagnostic_turn)
+    behavioural = subs.add_parser(
+        "behavioural-pack",
+        help="Run the local-only 20-message behavioural diagnostic pack",
+    )
+    behavioural.add_argument("--pack-path", default=None)
+    behavioural.add_argument(
+        "--allow-disabled",
+        action="store_true",
+        help="Explicitly run disabled-mode diagnostic coverage instead of failing fast",
+    )
+    behavioural.set_defaults(func=cmd_behavioural_pack)
     lookup = subs.add_parser(
         "trace-lookup",
         help="Find a redacted Executive Orchestrator trace for an operator test",

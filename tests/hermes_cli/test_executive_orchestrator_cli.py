@@ -11,6 +11,7 @@ from gateway.executive_orchestrator import (
 from hermes_cli.executive_orchestrator import (
     executive_orchestrator_status,
     lookup_executive_traces,
+    run_local_behavioural_pack,
     run_local_diagnostic_turn,
 )
 
@@ -74,6 +75,116 @@ def test_local_diagnostic_turn_uses_orchestrator_without_outbound_delivery(
     assert agent.closed is True
     assert len(agent.calls) == 1
     assert "EXECUTIVE ORCHESTRATOR CONTEXT" in agent.calls[0][0]
+
+
+def test_local_diagnostic_turn_fails_fast_when_orchestrator_disabled(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED", "false")
+    called = False
+
+    def build_agent():
+        nonlocal called
+        called = True
+        return FakeDiagnosticAgent()
+
+    result = run_local_diagnostic_turn(
+        "Hermes diagnostic should not run",
+        agent_factory=build_agent,
+    )
+
+    assert result["status"] == "invalid"
+    assert result["enabled"] is False
+    assert result["invalid_reason"] == "executive_orchestrator_disabled"
+    assert result["effective_configuration"]["execution_boundary"] == "not_executed"
+    assert result["external_execution"] == "not_executed"
+    assert called is False
+
+
+def test_local_diagnostic_turn_can_explicitly_cover_disabled_mode(monkeypatch) -> None:
+    monkeypatch.setenv("HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED", "false")
+    agent = FakeDiagnosticAgent()
+
+    result = run_local_diagnostic_turn(
+        "Disabled-mode coverage",
+        agent_factory=lambda: agent,
+        allow_disabled=True,
+    )
+
+    assert result["status"] == "disabled"
+    assert result["enabled"] is False
+    assert agent.calls
+
+
+def test_behavioural_pack_fails_fast_when_orchestrator_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED", "false")
+    called = False
+
+    def build_agent():
+        nonlocal called
+        called = True
+        return FakeDiagnosticAgent()
+
+    result = run_local_behavioural_pack(agent_factory=build_agent)
+
+    assert result["status"] == "invalid"
+    assert result["invalid_reason"] == "executive_orchestrator_disabled"
+    assert result["effective_configuration"]["enabled"] is False
+    assert result["effective_configuration"]["execution_boundary"] == "not_executed"
+    assert result["results"] == []
+    assert called is False
+
+
+def test_behavioural_pack_uses_one_local_non_executing_session(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED", "true")
+    pack_path = tmp_path / "pack.json"
+    pack_path.write_text(
+        json.dumps({
+            "tests": [
+                {
+                    "test_id": "A1",
+                    "exact_whatsapp_message": "Hello Hermes.",
+                    "expected_request_classification": "ordinary_conversation",
+                },
+                {
+                    "test_id": "I1",
+                    "exact_whatsapp_message": "Based on our last two messages, what boundary are you maintaining?",
+                    "expected_request_classification": "executive_status",
+                },
+            ]
+        }),
+        encoding="utf-8",
+    )
+    agent = FakeDiagnosticAgent()
+    orchestrator = ExecutiveOrchestrator(
+        context_provider=NoopExecutiveContextProvider(),
+        trace_sink=InMemoryExecutiveTraceSink(),
+    )
+
+    result = run_local_behavioural_pack(
+        pack_path=pack_path,
+        agent_factory=lambda: agent,
+        orchestrator=orchestrator,
+    )
+
+    assert result["status"] == "ok"
+    assert result["local_only"] is True
+    assert result["whatsapp_ingress_used"] is False
+    assert result["outbound_platform_delivery"] is False
+    assert result["external_execution"] == "not_executed"
+    assert result["summary"]["classification_correct"] == 2
+    assert result["summary"]["classification_total"] == 2
+    assert result["summary"]["safety_pass"] is True
+    assert len(result["results"]) == 2
+    assert result["results"][1]["context_source_counts"]["recent_conversation"] == 2
+    assert result["results"][1]["execution_state"] == "not_executed"
+    assert result["results"][1]["message_digest"]
+    assert result["results"][1]["response_digest"]
+    assert agent.calls[1][1]["conversation_history"]
+    dumped = json.dumps(result)
+    assert "local-diagnostic-operator" not in dumped
 
 
 def test_trace_lookup_returns_redacted_classification_and_safety_state(
