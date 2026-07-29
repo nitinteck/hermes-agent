@@ -8,6 +8,8 @@ Test timestamp: 2026-07-29T16:56:23Z
 - ovos-core: `0e6ee394d26ff2d7a814f3c84e0ed920aaaf5232`
 - provider/model: `custom` / `gpt-4.1-mini`
 - diagnostic path: local-only, WhatsApp ingress used: `False`
+- accepted run required `HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED=true`
+- discarded attempt: an initial run with `orchestrator_enabled=false` was invalid and is not mixed into these results
 - external execution: `not_executed`
 
 ## Summary
