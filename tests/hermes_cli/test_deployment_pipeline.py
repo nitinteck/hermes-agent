@@ -135,13 +135,31 @@ def test_ssh_command_quotes_remote_script_as_single_shell_argument() -> None:
     assert command[4] == "'set -eu; false; echo unsafe'"
 
 
-def test_remote_fetch_uses_https_url_and_validates_expected_commit(
+def test_remote_fetch_uses_verified_local_bundle_by_default(
     tmp_path: Path,
 ) -> None:
     pipeline = DeploymentPipeline(_config(tmp_path), runner=FakeRunner())
 
     plan = "\n".join(pipeline.plan())
 
-    assert "fetch --force https://github.com/nitinteck/ovos-core.git" in plan
+    assert "create local ovos deploy bundle" in plan
+    assert "copy ovos deploy bundle" in plan
+    assert "fetch --force /tmp/hermes-ovos-target-sha.bundle" in plan
     assert "refs/remotes/hermes-deploy/main" in plan
     assert "origin main" not in plan
+
+
+def test_remote_fetch_can_use_explicit_repo_url(tmp_path: Path) -> None:
+    config = DeploymentConfig(
+        execute=False,
+        expected_ovos_commit="target-sha",
+        local_ovos_core=tmp_path,
+        remote_ovos_repo_url="https://example.test/ovos-core.git",
+        skip_local_validation=True,
+    )
+    pipeline = DeploymentPipeline(config, runner=FakeRunner())
+
+    plan = "\n".join(pipeline.plan())
+
+    assert "create local ovos deploy bundle" not in plan
+    assert "fetch --force https://example.test/ovos-core.git" in plan

@@ -70,7 +70,7 @@ class DeploymentConfig:
         "/Users/nitinteckchandani/Projects/Hermes-Build/ovos-core"
     )
     local_ovos_python: Path | None = None
-    remote_ovos_repo_url: str = "https://github.com/nitinteck/ovos-core.git"
+    remote_ovos_repo_url: str | None = None
     remote_ovos_core: str = "/opt/ai-stack/ovos-core"
     remote_hermes_agent: str = "/opt/ai-stack/hermes-agent"
     service: str = "hermes-gateway.service"
@@ -142,6 +142,14 @@ def _shell_join(parts: list[str]) -> str:
 
 def _ssh_command(config: DeploymentConfig, script: str) -> list[str]:
     return ["ssh", config.remote_host, "bash", "-lc", shlex.quote(script)]
+
+
+def _local_bundle_path(expected_commit: str) -> Path:
+    return Path(f"/private/tmp/hermes-ovos-{expected_commit}.bundle")
+
+
+def _remote_bundle_path(expected_commit: str) -> str:
+    return f"/tmp/hermes-ovos-{expected_commit}.bundle"
 
 
 def _default_local_ovos_python(local_ovos_core: Path) -> Path:
@@ -398,7 +406,7 @@ class DeploymentPipeline:
                     timeout=120,
                 ),
             ])
-        steps.extend([
+        steps.append(
             DeploymentStep(
                 "verify local ovos main",
                 remote_script=None,
@@ -413,7 +421,27 @@ class DeploymentPipeline:
                 ],
                 cwd=config.local_ovos_core,
                 timeout=30,
-            ),
+            )
+        )
+        fetch_source = config.remote_ovos_repo_url
+        if fetch_source is None:
+            local_bundle = _local_bundle_path(expected)
+            remote_bundle = _remote_bundle_path(expected)
+            steps.extend([
+                DeploymentStep(
+                    "create local ovos deploy bundle",
+                    ["git", "bundle", "create", str(local_bundle), "main"],
+                    cwd=config.local_ovos_core,
+                    timeout=60,
+                ),
+                DeploymentStep(
+                    "copy ovos deploy bundle",
+                    ["scp", str(local_bundle), f"{config.remote_host}:{remote_bundle}"],
+                    timeout=120,
+                ),
+            ])
+            fetch_source = remote_bundle
+        steps.extend([
             DeploymentStep(
                 "remote current commit",
                 remote_script=(
@@ -431,7 +459,7 @@ class DeploymentPipeline:
                 "fetch latest ovos main",
                 remote_script=(
                     f"set -eu; git -C {shlex.quote(config.remote_ovos_core)} "
-                    f"fetch --force {shlex.quote(config.remote_ovos_repo_url)} "
+                    f"fetch --force {shlex.quote(fetch_source)} "
                     "main:refs/remotes/hermes-deploy/main; "
                     f'test "$(git -C {shlex.quote(config.remote_ovos_core)} '
                     'rev-parse refs/remotes/hermes-deploy/main)" '

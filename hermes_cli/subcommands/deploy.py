@@ -47,8 +47,11 @@ def build_deploy_parser(subparsers, *, cmd_deploy: Callable) -> None:
     )
     deploy.add_argument(
         "--remote-ovos-repo-url",
-        default="https://github.com/nitinteck/ovos-core.git",
-        help="Read-only OVOS Core repository URL used by the VPS fetch step.",
+        default=None,
+        help=(
+            "Optional OVOS Core repository URL used by the VPS fetch step. "
+            "Defaults to transferring a verified local git bundle."
+        ),
     )
     deploy.add_argument(
         "--service",

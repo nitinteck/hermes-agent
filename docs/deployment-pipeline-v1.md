@@ -45,7 +45,8 @@ hermes deploy --execute --expected-ovos-commit <sha>
    EDE/Hermes MVP pgtap suites.
 3. Verify local `main == origin/main`.
 4. Verify remote tracked files are clean.
-5. Fetch latest OVOS `main` from the read-only HTTPS repository URL.
+5. Create a local `git bundle` from the verified `main` commit and copy it to
+   the VPS, unless `--remote-ovos-repo-url` is explicitly supplied.
 6. Pull/reset remote OVOS to the fetched and verified commit.
 7. Verify the editable OVOS install in the Hermes venv, reinstalling only if
    the active import path is not the deployed OVOS checkout.
