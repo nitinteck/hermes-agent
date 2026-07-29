@@ -15,10 +15,13 @@ Last updated: 2026-07-29
 | Multi-tenancy | Tenant scope checked where identifiers exist | Hardened tenant isolation before wider deployment |
 | Frontend | None | Non-goal for this phase |
 
-## Current Production SHAs
+## Current Production Runtime SHAs
 
-- `hermes-agent`: `bc8393607e8350dacd7f41d83891bb032cd6309c`
-- runtime-changing Hermes SHA: `db818dc4da080321767562de322a0968b063bbef`
+- `hermes-agent` runtime-changing SHA:
+  `7a7ecdceab5010e5bcf5852ed756f9122e2d3b5b`
+- previous runtime-changing Hermes SHA:
+  `db818dc4da080321767562de322a0968b063bbef`
 - `ovos-core`: `0e6ee394d26ff2d7a814f3c84e0ed920aaaf5232`
 
-This matrix must be updated after deployment of this milestone.
+The exact deployed checkout SHA may be newer when documentation-only commits
+are deployed after runtime validation.
