@@ -314,8 +314,13 @@ class ExecutiveContextCollectionService:
         agent: Any = None,
     ) -> ExecutiveContextSnapshot:
         started = time.monotonic()
-        required = required_context_types_for_classification(request_classification)
-        selected = self._select_providers(required)
+        required = required_context_types_for_classification(
+            request_classification,
+            message=str(turn.message or ""),
+        )
+        selected = self._select_providers(
+            required, turn=turn, classification=request_classification
+        )
         request = ExecutiveContextProviderRequest(
             turn=turn,
             request_classification=request_classification,
@@ -427,6 +432,9 @@ class ExecutiveContextCollectionService:
     def _select_providers(
         self,
         required_context_types: tuple[str, ...],
+        *,
+        turn: ExecutiveTurnInput,
+        classification: str,
     ) -> tuple[ExecutiveContextProvider, ...]:
         selected: dict[str, ExecutiveContextProvider] = {}
         for context_type in required_context_types:
@@ -441,6 +449,15 @@ class ExecutiveContextCollectionService:
                     and not is_mcp_context_adapter_enabled()
                 ):
                     continue
+                if provider.metadata.provider_id == "google_calendar_context":
+                    from gateway.google_calendar_context_provider import (
+                        should_select_google_calendar_context,
+                    )
+
+                    if not should_select_google_calendar_context(
+                        str(turn.message or ""), classification
+                    ):
+                        continue
                 selected[provider.metadata.provider_id] = provider
         return tuple(
             sorted(selected.values(), key=lambda item: item.metadata.provider_id)
@@ -709,10 +726,13 @@ class MCPContextProviderBoundary:
 
 
 def build_default_context_provider_registry() -> ExecutiveContextProviderRegistry:
+    from gateway.google_calendar_context_provider import GoogleCalendarContextProvider
+
     registry = ExecutiveContextProviderRegistry()
     registry.register(CurrentRequestMetadataProvider())
     registry.register(PersistentProfileProvider())
     registry.register(RecentConversationProvider())
+    registry.register(GoogleCalendarContextProvider())
     registry.register(MockExecutiveContextProvider())
     return registry
 
@@ -753,6 +773,7 @@ def classify_mcp_tool_access(tool_schema: Mapping[str, Any]) -> str:
 
 def required_context_types_for_classification(
     request_classification: str,
+    message: str | None = None,
 ) -> tuple[str, ...]:
     common = ("capability_status",)
     mapping = {
@@ -798,7 +819,22 @@ def required_context_types_for_classification(
         "unsupported_or_unsafe": common,
         "potentially_executable": common,
     }
-    return tuple(dict.fromkeys(mapping.get(request_classification, common)))
+    required = list(mapping.get(request_classification, common))
+    if message is not None:
+        from gateway.google_calendar_context_provider import (
+            should_select_google_calendar_context,
+        )
+
+        if should_select_google_calendar_context(message, request_classification):
+            required.extend([
+                "calendar_capability_status",
+                "schedule_summary",
+                "meeting",
+                "availability",
+                "calendar_conflict",
+                "preparation_requirement",
+            ])
+    return tuple(dict.fromkeys(required))
 
 
 def _compose_context(

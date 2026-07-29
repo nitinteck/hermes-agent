@@ -442,7 +442,7 @@ class ExecutiveOrchestrator:
             raise OrchestratorError(
                 "potential external execution request blocked",
                 classification=classification,
-                safe_response=EXECUTION_UNAVAILABLE_MESSAGE,
+                safe_response=_safe_blocked_execution_response(normalized),
                 correlation_id=correlation_id,
                 trace_id=trace_id,
             )
@@ -706,6 +706,41 @@ def classify_request(message: str) -> str:
     if _is_planning_request(text):
         return "planning_request"
     return "ordinary_conversation"
+
+
+def _safe_blocked_execution_response(message: str) -> str:
+    text = message.casefold()
+    if re.search(r"\b(can you|do you|are you able to)\b.+\bread\b", text) and (
+        "gmail" in text or "calendar" in text or "clickup" in text
+    ):
+        try:
+            from gateway.google_calendar_context_provider import (
+                google_calendar_capability_status,
+            )
+
+            calendar_status = google_calendar_capability_status()
+        except Exception:
+            calendar_status = "status_unavailable"
+        if calendar_status == "connected":
+            calendar_line = (
+                "Google Calendar read-only context is connected for bounded "
+                "schedule lookups."
+            )
+        elif calendar_status == "configured_awaiting_live_read_enablement":
+            calendar_line = (
+                "Google Calendar read-only context is installed but live reads "
+                "are not enabled yet."
+            )
+        else:
+            calendar_line = (
+                "Google Calendar read-only context is awaiting user authorisation."
+            )
+        return (
+            f"{calendar_line} Gmail is not connected, ClickUp is not connected, "
+            "and I cannot send, create, modify or delete external records; "
+            "execution remains not_executed."
+        )
+    return EXECUTION_UNAVAILABLE_MESSAGE
 
 
 def _is_external_action_request(text: str) -> bool:

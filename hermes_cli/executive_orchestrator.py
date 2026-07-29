@@ -18,6 +18,12 @@ def executive_orchestrator_status() -> dict[str, Any]:
         is_executive_context_provider_framework_enabled,
         is_mcp_context_adapter_enabled,
     )
+    from gateway.google_calendar_context_provider import (
+        GoogleCalendarProviderConfig,
+        google_calendar_capability_status,
+    )
+
+    calendar_config = GoogleCalendarProviderConfig.from_environment()
 
     return {
         "enabled": is_executive_orchestrator_enabled(),
@@ -30,6 +36,13 @@ def executive_orchestrator_status() -> dict[str, Any]:
         "mcp_context_adapter_enabled": is_mcp_context_adapter_enabled(),
         "execution_boundary": "not_executed",
         "live_execution_enabled": False,
+        "google_calendar_context_provider_enabled": calendar_config.provider_enabled,
+        "google_calendar_live_reads_enabled": calendar_config.live_reads_enabled,
+        "google_calendar_descriptions_enabled": calendar_config.descriptions_enabled,
+        "google_calendar_write_capability_enabled": False,
+        "google_calendar_authorisation_status": google_calendar_capability_status(
+            calendar_config
+        ),
         "diagnostic_ingress": "local_cli_only",
         "outbound_platform_delivery": False,
     }

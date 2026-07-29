@@ -14,7 +14,7 @@ flowchart TD
   B --> C["authorized_gateway_dispatch"]
   C --> D["Executive Orchestrator"]
   D --> E["Executive Context Provider Framework"]
-  E --> F["Local Hermes and OVOS data only"]
+  E --> F["Local Hermes, OVOS and authorised read-only providers"]
   D --> G["AIAgent reasoning provider"]
   G --> D
   D --> H["Gateway response delivery"]
@@ -38,6 +38,12 @@ The Executive Context Provider Framework owns deterministic provider
 registration, contribution validation, scope checks, evidence references,
 context budgets, provider health metadata, timeout/error isolation, and safe
 trace snapshots.
+
+The Google Calendar Context Provider is the first authorised external-read
+provider. It is selected only for Calendar-shaped requests or agenda/briefing
+needs, normalises Google events into Hermes-owned contributions, and never
+exposes OAuth tokens, attendee email addresses, event descriptions, raw Google
+payloads or write APIs to the reasoning provider.
 
 The reasoning provider remains the configured LLM implementation. It reasons
 over context selected by Hermes; it does not decide which organisational
@@ -91,5 +97,6 @@ Write or unknown access cannot be used for executive context collection.
 
 `HERMES MVP v0.2 - READ-ONLY EXECUTIVE CONTEXT CONNECTORS`
 
-That milestone may add Gmail, Google Calendar, and ClickUp as read-only context
-providers. It must not add external writes or live execution.
+That milestone may add Gmail and ClickUp as read-only context providers and
+may authorise live Google Calendar reads after user OAuth review. It must not
+add external writes or live execution.

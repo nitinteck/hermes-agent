@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from typing import Any
 
 from gateway.executive_orchestrator import (
     ExecutiveOrchestrator,
@@ -21,7 +22,7 @@ class FakeDiagnosticAgent:
     model = "gpt-4.1-mini"
 
     def __init__(self) -> None:
-        self.calls = []
+        self.calls: list[tuple[Any, dict[str, Any]]] = []
         self.closed = False
 
     def run_conversation(self, message, **kwargs):  # noqa: ANN001
@@ -36,6 +37,9 @@ def test_status_is_operator_safe_and_non_executing(monkeypatch) -> None:
     monkeypatch.setenv("HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED", "true")
     monkeypatch.delenv("HERMES_EXECUTIVE_CONTEXT_MOCK_PROVIDER_ENABLED", raising=False)
     monkeypatch.delenv("HERMES_MCP_CONTEXT_ADAPTER_ENABLED", raising=False)
+    monkeypatch.delenv("HERMES_GOOGLE_CALENDAR_TOKEN_FILE", raising=False)
+    monkeypatch.setenv("HERMES_GOOGLE_CALENDAR_CONTEXT_PROVIDER_ENABLED", "true")
+    monkeypatch.setenv("HERMES_GOOGLE_CALENDAR_LIVE_READS_ENABLED", "false")
 
     status = executive_orchestrator_status()
 
@@ -45,8 +49,17 @@ def test_status_is_operator_safe_and_non_executing(monkeypatch) -> None:
     assert status["mcp_context_adapter_enabled"] is False
     assert status["execution_boundary"] == "not_executed"
     assert status["live_execution_enabled"] is False
+    assert status["google_calendar_context_provider_enabled"] is True
+    assert status["google_calendar_live_reads_enabled"] is False
+    assert status["google_calendar_descriptions_enabled"] is False
+    assert status["google_calendar_write_capability_enabled"] is False
+    assert (
+        status["google_calendar_authorisation_status"]
+        == "configured_awaiting_live_read_enablement"
+    )
     assert status["diagnostic_ingress"] == "local_cli_only"
     assert status["outbound_platform_delivery"] is False
+    assert "TOKEN" not in json.dumps(status).upper()
 
 
 def test_local_diagnostic_turn_uses_orchestrator_without_outbound_delivery(
