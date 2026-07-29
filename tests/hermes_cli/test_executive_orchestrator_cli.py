@@ -34,10 +34,15 @@ class FakeDiagnosticAgent:
 
 def test_status_is_operator_safe_and_non_executing(monkeypatch) -> None:
     monkeypatch.setenv("HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED", "true")
+    monkeypatch.delenv("HERMES_EXECUTIVE_CONTEXT_MOCK_PROVIDER_ENABLED", raising=False)
+    monkeypatch.delenv("HERMES_MCP_CONTEXT_ADAPTER_ENABLED", raising=False)
 
     status = executive_orchestrator_status()
 
     assert status["enabled"] is True
+    assert status["executive_context_provider_framework_enabled"] is True
+    assert status["mock_executive_context_provider_enabled"] is False
+    assert status["mcp_context_adapter_enabled"] is False
     assert status["execution_boundary"] == "not_executed"
     assert status["live_execution_enabled"] is False
     assert status["diagnostic_ingress"] == "local_cli_only"
@@ -72,6 +77,22 @@ def test_local_diagnostic_turn_uses_orchestrator_without_outbound_delivery(
     assert result["correlation_id"].startswith("eo_")
     assert result["trace_id"].startswith("trace_")
     assert result["no_execution_confirmed"] is True
+    assert (
+        result["effective_configuration"][
+            "executive_context_provider_framework_enabled"
+        ]
+        is True
+    )
+    assert (
+        result["effective_configuration"]["mock_executive_context_provider_enabled"]
+        is False
+    )
+    assert result["effective_configuration"]["mcp_context_adapter_enabled"] is False
+    assert result["context_provider_snapshot"]["selected_provider_ids"] == [
+        "current_request_metadata",
+        "persistent_profile",
+        "recent_conversation",
+    ]
     assert agent.closed is True
     assert len(agent.calls) == 1
     assert "EXECUTIVE ORCHESTRATOR CONTEXT" in agent.calls[0][0]

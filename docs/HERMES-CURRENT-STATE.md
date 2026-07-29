@@ -1,6 +1,6 @@
 # Hermes Current State
 
-Last verified: 2026-07-29T16:14:31Z
+Last verified: 2026-07-29
 
 This is the authoritative current-state entrypoint for the deployed Hermes
 runtime. Historical checkpoint records remain useful as snapshots, but this
@@ -15,7 +15,7 @@ before adding Gmail, Google Calendar, ClickUp or other read-only connectors.
 
 ## Current Phase
 
-HERMES BEHAVIOURAL READINESS & BASELINE STABILISATION v1.
+HERMES LAYERED ARCHITECTURE AND EXECUTIVE CONTEXT FOUNDATION v1.
 
 Next approved milestone:
 
@@ -37,8 +37,9 @@ Runtime paths:
 
 Deployed SHAs:
 
-- `hermes-agent`: `ba4e72b24bd584521e25ea88a7f8dbdd316560fb`
-- `ovos-core`: `f978dfdf8e211659cac247f57ec813c965a07bd3`
+- `hermes-agent`: `bc8393607e8350dacd7f41d83891bb032cd6309c`
+- runtime-changing Hermes SHA: `db818dc4da080321767562de322a0968b063bbef`
+- `ovos-core`: `0e6ee394d26ff2d7a814f3c84e0ed920aaaf5232`
 
 Production migrations are current through `20260729130000`.
 
@@ -56,9 +57,10 @@ Normal production reasoning turns follow:
 2. `authorized_gateway_dispatch`
 3. `GatewayRunner._run_agent_inner`
 4. `ExecutiveOrchestrator.prepare_turn`
-5. `AIAgent.run_conversation`
-6. `ExecutiveOrchestrator.observe_response`
-7. existing gateway response delivery
+5. `ExecutiveContextCollectionService`
+6. `AIAgent.run_conversation`
+7. `ExecutiveOrchestrator.observe_response`
+8. existing gateway response delivery
 
 The gateway owns transport, auth, platform normalization, session persistence
 and outbound delivery. The Executive Orchestrator owns classification, bounded
@@ -69,6 +71,7 @@ post-response observation and trace metadata.
 
 - WhatsApp ingress through the existing bridge.
 - Executive Orchestrator enabled for normal production chat.
+- Executive Context Provider Framework enabled for bounded local context.
 - Deterministic OVOS hook coexistence where existing gateway dispatch supports
   it.
 - Local Event Journal and Daily Brief data surfaces.
@@ -100,6 +103,8 @@ current OVOS context.
 The current Orchestrator uses only local and persistent Hermes/OVOS data:
 
 - current gateway turn metadata
+- recent conversation metadata as digests and source categories
+- persistent profile availability metadata
 - recent Event Journal records
 - latest Daily Brief records when available
 - approval-like Event Journal records
@@ -109,6 +114,17 @@ The current Orchestrator uses only local and persistent Hermes/OVOS data:
 - deterministic OVOS command output when supplied
 
 No new read-only connectors are active in this phase.
+
+Built-in context providers:
+
+- `current_request_metadata`
+- `recent_conversation`
+- `persistent_profile`
+
+Disabled provider boundaries:
+
+- `mock_executive_context`, test/local only and disabled unless explicitly set
+- `mcp_context_boundary`, disabled until the read-only connector milestone
 
 ## Context Limits
 
@@ -125,6 +141,17 @@ Defaults:
 
 Context is tenant-filtered where tenant IDs are present. Secret-like strings
 are redacted before context is rendered.
+
+## Runtime Flags
+
+Production-safe default flags:
+
+```bash
+HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED=true
+HERMES_EXECUTIVE_CONTEXT_PROVIDER_FRAMEWORK_ENABLED=true
+HERMES_EXECUTIVE_CONTEXT_MOCK_PROVIDER_ENABLED=false
+HERMES_MCP_CONTEXT_ADAPTER_ENABLED=false
+```
 
 ## Request Classifications
 

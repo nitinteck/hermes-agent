@@ -15,11 +15,13 @@ Production message flow:
 4. `GatewayRunner._run_agent_inner` prepares the current turn.
 5. `run_reasoning_with_optional_orchestrator(...)` calls
    `ExecutiveOrchestrator.prepare_turn(...)`.
-6. The existing `AIAgent.run_conversation(...)` receives the constructed
+6. `ExecutiveContextCollectionService` gathers bounded local provider
+   contributions.
+7. The existing `AIAgent.run_conversation(...)` receives the constructed
    executive reasoning request.
-7. `ExecutiveOrchestrator.observe_response(...)` records a bounded trace and
+8. `ExecutiveOrchestrator.observe_response(...)` records a bounded trace and
    confirms `execution_state=not_executed`.
-8. Gateway response delivery remains owned by the existing gateway adapter path.
+9. Gateway response delivery remains owned by the existing gateway adapter path.
 
 The insertion point is
 `gateway/run.py`, inside `GatewayRunner._run_agent_inner`, immediately before
@@ -31,6 +33,7 @@ The orchestrator owns:
 
 - request classification;
 - bounded executive context assembly;
+- executive context provider snapshot integration;
 - safety boundary text;
 - reasoning request construction;
 - post-response observation;
@@ -48,9 +51,11 @@ The gateway still owns:
 
 ## Context Sources
 
-The default context provider reads only local Hermes/OVOS state:
+The default context layer reads only local Hermes/OVOS state:
 
 - current conversation/session metadata from the gateway turn;
+- recent conversation metadata rendered as digests, not raw history;
+- persistent profile or memory availability metadata;
 - recent local OVOS EDE journal entries from `OVOS_EDE_LOCAL_STORE`, if set;
 - latest local Daily Brief records from the same store, if available;
 - pending approval-like journal entries;
@@ -60,6 +65,27 @@ The default context provider reads only local Hermes/OVOS state:
 
 No Gmail, Google Calendar, ClickUp, Slack, WhatsApp history or CRM connector is
 implemented by this milestone.
+
+## Context Provider Framework
+
+The provider framework lives in
+`gateway/executive_context_providers.py`.
+
+Current production-safe providers:
+
+- `current_request_metadata`
+- `recent_conversation`
+- `persistent_profile`
+
+Disabled boundaries:
+
+- `mock_executive_context`, local/test only and disabled by default
+- `mcp_context_boundary`, disabled until explicitly authorised read-only
+  connector work
+
+Each contribution includes provenance, tenant/user scope, source mechanism,
+evidence references, sensitivity and freshness metadata. Operator traces expose
+counts, provider IDs, warnings and digests, not raw private content.
 
 ## Limits
 
@@ -104,6 +130,9 @@ Development, test and production enablement:
 
 ```bash
 HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED=true
+HERMES_EXECUTIVE_CONTEXT_PROVIDER_FRAMEWORK_ENABLED=true
+HERMES_EXECUTIVE_CONTEXT_MOCK_PROVIDER_ENABLED=false
+HERMES_MCP_CONTEXT_ADAPTER_ENABLED=false
 OVOS_EDE_LOCAL_STORE=/path/to/ede-local-store.json
 ```
 
@@ -135,7 +164,8 @@ The diagnostic command is a local process invocation. It does not bind a public
 listener, does not attach a platform adapter, does not deliver outbound
 messages, and disables diagnostic toolsets. Output includes correlation ID,
 trace ID, classification, provider, model, response text, and
-`no_execution_confirmed`.
+`no_execution_confirmed`. It also includes safe context-provider snapshot
+metadata showing whether mock and MCP providers are disabled.
 
 Redacted operator trace lookup:
 
