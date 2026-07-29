@@ -270,6 +270,17 @@ def is_executive_orchestrator_enabled() -> bool:
     return is_truthy_value(os.getenv("HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED"))
 
 
+def _context_provider_framework_enabled() -> bool:
+    try:
+        from gateway.executive_context_providers import (
+            is_executive_context_provider_framework_enabled,
+        )
+
+        return is_executive_context_provider_framework_enabled()
+    except Exception:
+        return False
+
+
 _DEFAULT_ORCHESTRATOR: ExecutiveOrchestrator | None = None
 
 
@@ -314,7 +325,10 @@ def run_reasoning_with_optional_orchestrator(
 
     active_orchestrator = orchestrator or ExecutiveOrchestrator()
     turn = _with_runtime_context(
-        turn, agent=agent, conversation_kwargs=conversation_kwargs
+        turn,
+        agent=agent,
+        conversation_kwargs=conversation_kwargs,
+        limits=active_orchestrator.limits,
     )
     try:
         prepared = active_orchestrator.prepare_turn(turn)
@@ -377,6 +391,7 @@ def run_reasoning_with_optional_orchestrator(
             "latency_ms": elapsed_ms,
             "no_execution_confirmed": True,
             "warnings": merged_warnings,
+            "context_provider_snapshot": _context_provider_snapshot(prepared),
         }
     return OrchestratedReasoningResult(
         result=result,
@@ -433,6 +448,13 @@ class ExecutiveOrchestrator:
             )
 
         warnings: list[str] = []
+        provider_snapshot = _context_provider_snapshot_from_trace(turn.trace_metadata)
+        snapshot_warnings = provider_snapshot.get("warnings")
+        if isinstance(snapshot_warnings, list):
+            warnings.extend(
+                f"context_provider:{_safe_label(str(warning))}"
+                for warning in snapshot_warnings
+            )
         try:
             raw_context = self.context_provider.collect(turn, self.limits)
             raw_context = _merge_context(raw_context, turn.runtime_context)
@@ -544,6 +566,7 @@ class ExecutiveOrchestrator:
             "context_digest": prepared.context_digest,
             "context_source_counts": dict(prepared.context_source_counts),
             "evidence_refs": list(prepared.evidence_refs),
+            "context_provider_snapshot": _context_provider_snapshot(prepared),
             "safety_state": prepared.safety_state,
             "execution_state": "not_executed",
             "warnings": list(prepared.warnings),
@@ -566,6 +589,7 @@ class ExecutiveOrchestrator:
             "context_digest": prepared.context_digest,
             "context_source_counts": dict(prepared.context_source_counts),
             "evidence_refs": list(prepared.evidence_refs),
+            "context_provider_snapshot": _context_provider_snapshot(prepared),
             "safety_state": prepared.safety_state,
             "execution_state": "not_executed",
             "warnings": list(prepared.warnings),
@@ -595,6 +619,7 @@ class ExecutiveOrchestrator:
             "latency_ms": latency_ms,
             "context_digest": prepared.context_digest,
             "context_source_counts": dict(prepared.context_source_counts),
+            "context_provider_snapshot": _context_provider_snapshot(prepared),
             "response_digest": _digest(response_text)[:16],
             "evidence_refs": list(prepared.evidence_refs),
             "safety_state": prepared.safety_state,
@@ -638,6 +663,9 @@ class ExecutiveOrchestrator:
             "status": status,
             "context_digest": context_digest,
             "context_source_counts": dict(context_source_counts or {}),
+            "context_provider_snapshot": _context_provider_snapshot_from_trace(
+                turn.trace_metadata
+            ),
             "message_digest": _digest(_normalize_message(turn.message))[:16],
             "evidence_refs": list(evidence_refs),
             "safety_state": "not_executed",
@@ -766,28 +794,54 @@ def _with_runtime_context(
     *,
     agent: ReasoningAgent,
     conversation_kwargs: Mapping[str, Any],
+    limits: ExecutiveContextLimits | None = None,
 ) -> ExecutiveTurnInput:
     runtime_context = dict(turn.runtime_context)
+    trace_metadata = dict(turn.trace_metadata)
+    if _context_provider_framework_enabled():
+        try:
+            from gateway.executive_context_providers import (
+                build_default_context_collection_service,
+            )
+
+            classification = classify_request(_normalize_message(turn.message))
+            snapshot = build_default_context_collection_service().collect(
+                turn=turn,
+                request_classification=classification,
+                limits=limits or ExecutiveContextLimits(),
+                conversation_history=conversation_kwargs.get("conversation_history")
+                or (),
+                agent=agent,
+            )
+            runtime_context.update(snapshot.to_context_items())
+            trace_metadata["executive_context_snapshot"] = (
+                snapshot.safe_trace_metadata()
+            )
+        except Exception:
+            trace_metadata["executive_context_provider_framework_warning"] = (
+                "collection_unavailable"
+            )
     conversation_items = _recent_conversation_context_items(
         conversation_kwargs.get("conversation_history")
     )
-    if conversation_items:
+    if conversation_items and "recent_conversation" not in runtime_context:
         runtime_context["recent_conversation"] = tuple(conversation_items)
     profile_item = _persistent_profile_context_item(agent)
-    if profile_item is not None:
+    if profile_item is not None and "persistent_profile" not in runtime_context:
         runtime_context["persistent_profile"] = (profile_item,)
-    runtime_context["current_request_metadata"] = (
-        ContextItem(
-            source="current_request_metadata",
-            reference_id=f"current_request:{_digest(_normalize_message(turn.message))[:12]}",
-            title="Current request metadata",
-            summary=(
-                f"platform={_safe_label(turn.platform)} "
-                f"actor_digest={_digest(turn.actor_id)[:12]} "
-                f"message_digest={_digest(_normalize_message(turn.message))[:16]}"
+    if "current_request_metadata" not in runtime_context:
+        runtime_context["current_request_metadata"] = (
+            ContextItem(
+                source="current_request_metadata",
+                reference_id=f"current_request:{_digest(_normalize_message(turn.message))[:12]}",
+                title="Current request metadata",
+                summary=(
+                    f"platform={_safe_label(turn.platform)} "
+                    f"actor_digest={_digest(turn.actor_id)[:12]} "
+                    f"message_digest={_digest(_normalize_message(turn.message))[:16]}"
+                ),
             ),
-        ),
-    )
+        )
     if turn.deterministic_command_result:
         runtime_context["deterministic_output"] = (
             ContextItem(
@@ -797,7 +851,7 @@ def _with_runtime_context(
                 summary="Deterministic command output was supplied separately and labelled as evidence.",
             ),
         )
-    return replace(turn, runtime_context=runtime_context)
+    return replace(turn, runtime_context=runtime_context, trace_metadata=trace_metadata)
 
 
 def _recent_conversation_context_items(value: Any) -> list[ContextItem]:
@@ -857,6 +911,22 @@ def _runtime_context_counts(
     runtime: Mapping[str, tuple[ContextItem, ...]],
 ) -> dict[str, int]:
     return {name: len(items) for name, items in sorted(runtime.items()) if items}
+
+
+def _context_provider_snapshot(prepared: PreparedExecutiveTurn) -> Mapping[str, Any]:
+    return _context_provider_snapshot_from_trace(prepared.trace_metadata)
+
+
+def _context_provider_snapshot_from_trace(
+    trace_metadata: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    value = trace_metadata.get("executive_context_snapshot")
+    if isinstance(value, Mapping):
+        return dict(value)
+    warning = trace_metadata.get("executive_context_provider_framework_warning")
+    if warning:
+        return {"status": _safe_label(str(warning))}
+    return {}
 
 
 def _contains_any(text: str, needles: tuple[str, ...]) -> bool:

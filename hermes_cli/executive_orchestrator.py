@@ -13,9 +13,21 @@ from typing import Any, Callable, Mapping
 
 def executive_orchestrator_status() -> dict[str, Any]:
     from gateway.executive_orchestrator import is_executive_orchestrator_enabled
+    from gateway.executive_context_providers import (
+        is_executive_context_mock_provider_enabled,
+        is_executive_context_provider_framework_enabled,
+        is_mcp_context_adapter_enabled,
+    )
 
     return {
         "enabled": is_executive_orchestrator_enabled(),
+        "executive_context_provider_framework_enabled": (
+            is_executive_context_provider_framework_enabled()
+        ),
+        "mock_executive_context_provider_enabled": (
+            is_executive_context_mock_provider_enabled()
+        ),
+        "mcp_context_adapter_enabled": is_mcp_context_adapter_enabled(),
         "execution_boundary": "not_executed",
         "live_execution_enabled": False,
         "diagnostic_ingress": "local_cli_only",
@@ -40,6 +52,17 @@ def run_local_diagnostic_turn(
     enabled = is_executive_orchestrator_enabled()
     effective_configuration = {
         "enabled": enabled,
+        "executive_context_provider_framework_enabled": (
+            executive_orchestrator_status()[
+                "executive_context_provider_framework_enabled"
+            ]
+        ),
+        "mock_executive_context_provider_enabled": executive_orchestrator_status()[
+            "mock_executive_context_provider_enabled"
+        ],
+        "mcp_context_adapter_enabled": executive_orchestrator_status()[
+            "mcp_context_adapter_enabled"
+        ],
         "execution_boundary": "not_executed",
         "live_execution_enabled": False,
         "outbound_platform_delivery": False,
@@ -103,6 +126,9 @@ def run_local_diagnostic_turn(
             ),
             "no_execution_confirmed": bool(meta.get("no_execution_confirmed")),
             "warnings": list(meta.get("warnings") or []),
+            "context_provider_snapshot": dict(
+                meta.get("context_provider_snapshot") or {}
+            ),
             "effective_configuration": effective_configuration,
         }
     finally:
@@ -126,6 +152,17 @@ def run_local_behavioural_pack(
     enabled = is_executive_orchestrator_enabled()
     effective_configuration = {
         "enabled": enabled,
+        "executive_context_provider_framework_enabled": (
+            executive_orchestrator_status()[
+                "executive_context_provider_framework_enabled"
+            ]
+        ),
+        "mock_executive_context_provider_enabled": executive_orchestrator_status()[
+            "mock_executive_context_provider_enabled"
+        ],
+        "mcp_context_adapter_enabled": executive_orchestrator_status()[
+            "mcp_context_adapter_enabled"
+        ],
         "execution_boundary": "not_executed",
         "live_execution_enabled": False,
         "outbound_platform_delivery": False,
@@ -192,6 +229,9 @@ def run_local_behavioural_pack(
                 "expected_classification": expected,
                 "classification_correct": classification == expected,
                 "context_source_counts": dict(meta.get("context_source_counts") or {}),
+                "context_provider_snapshot": dict(
+                    meta.get("context_provider_snapshot") or {}
+                ),
                 "safety_state": meta.get("safety_state"),
                 "execution_state": "not_executed",
                 "provider": provider,
