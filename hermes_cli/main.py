@@ -13690,6 +13690,10 @@ def main():
     )
     fallback_parser.set_defaults(func=cmd_fallback)
 
+    from hermes_cli.executive_orchestrator import register_cli as _register_eo_cli
+
+    _register_eo_cli(subparsers)
+
     # =========================================================================
     # secrets command — external secret managers (Bitwarden, 1Password)
     # =========================================================================

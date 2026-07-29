@@ -72,6 +72,8 @@ The health gate checks:
   `20260729130000`.
 - `/ovos status --json` reports a non-critical state and a running gateway.
 - The deployed OVOS commit matches the expected SHA.
+- `hermes executive-orchestrator status` reports the feature flag and
+  `execution_boundary=not_executed` without exposing secrets.
 
 ## Smoke Tests
 
@@ -83,5 +85,7 @@ The smoke gate checks:
 - deterministic Daily Brief generation works.
 - EDE-007A execution targets still report `live adapter: none`.
 - EDE-007A controls still expose the Execution Safety Kernel.
+- `hermes executive-orchestrator diagnostic-turn ...` exercises the local
+  orchestrator and reasoning path with no outbound platform delivery.
 
 No live execution adapter is enabled by this pipeline.

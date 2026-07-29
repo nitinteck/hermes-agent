@@ -78,7 +78,9 @@ def _probe_gateway(runtime_status: dict[str, Any]) -> dict[str, Any]:
             in {"connected", "running", "ok"}
         )
     status = "ok" if state in {"running", "draining"} else "degraded"
-    return _check(status, state=state, connected_platforms=connected, platforms=configured)
+    return _check(
+        status, state=state, connected_platforms=connected, platforms=configured
+    )
 
 
 def collect_runtime_readiness(
@@ -97,6 +99,12 @@ def collect_runtime_readiness(
     """
     home = get_hermes_home()
     runtime = runtime_status if isinstance(runtime_status, dict) else {}
+    try:
+        from gateway.executive_orchestrator import is_executive_orchestrator_enabled
+
+        orchestrator_enabled = is_executive_orchestrator_enabled()
+    except Exception:
+        orchestrator_enabled = False
     checks = {
         "state_db": _probe_state_db(home),
         "config": _probe_config(home),
@@ -109,8 +117,17 @@ def collect_runtime_readiness(
             process_completions=max(0, int(process_completion_queue_depth)),
             active_delegations=max(0, int(active_delegations)),
         ),
+        "executive_orchestrator": _check(
+            "ok",
+            enabled=orchestrator_enabled,
+            execution_boundary="not_executed",
+        ),
     }
-    overall = "ok" if all(item.get("status") == "ok" for item in checks.values()) else "degraded"
+    overall = (
+        "ok"
+        if all(item.get("status") == "ok" for item in checks.values())
+        else "degraded"
+    )
     return {"status": overall, "checks": checks}
 
 
