@@ -137,6 +137,20 @@ messages, and disables diagnostic toolsets. Output includes correlation ID,
 trace ID, classification, provider, model, response text, and
 `no_execution_confirmed`.
 
+Redacted operator trace lookup:
+
+```bash
+hermes executive-orchestrator trace-lookup --approx-timestamp "2026-07-29T16:14:31Z" --window-seconds 900
+hermes executive-orchestrator trace-lookup --correlation-id eo_...
+hermes executive-orchestrator trace-lookup --message-digest abc123 --response-digest def456
+```
+
+Trace lookup reads `~/.hermes/executive_orchestrator_traces.jsonl` by default
+and returns correlation ID, trace ID, classification, provider/model, context
+source counts, safety state, execution state, message digest and response
+digest. It does not return complete private message text, complete prompts,
+phone numbers, tokens or secrets.
+
 ## Production Verification
 
 Recommended production checks:
@@ -145,6 +159,7 @@ Recommended production checks:
 systemctl --user status hermes-gateway.service
 hermes executive-orchestrator status
 hermes executive-orchestrator diagnostic-turn "Hermes diagnostic: confirm orchestrator health."
+hermes executive-orchestrator trace-lookup --approx-timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --window-seconds 900
 tail -n 50 ~/.hermes/executive_orchestrator_traces.jsonl
 ```
 

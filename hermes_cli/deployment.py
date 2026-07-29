@@ -10,7 +10,7 @@ import sys
 import time
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 
 @dataclass(frozen=True)
@@ -66,9 +66,7 @@ class SubprocessCommandRunner:
 @dataclass(frozen=True)
 class DeploymentConfig:
     remote_host: str = "hermes-vps"
-    local_ovos_core: Path = Path(
-        "/Users/nitinteckchandani/Projects/Hermes-Build/ovos-core"
-    )
+    local_ovos_core: Path = field(default_factory=lambda: _default_local_ovos_core())
     local_ovos_python: Path | None = None
     remote_ovos_repo_url: str | None = None
     remote_ovos_core: str = "/opt/ai-stack/ovos-core"
@@ -158,6 +156,45 @@ def _local_bundle_path(expected_commit: str) -> Path:
 
 def _remote_bundle_path(expected_commit: str) -> str:
     return f"/tmp/hermes-ovos-{expected_commit}.bundle"
+
+
+def _default_local_ovos_core(
+    *,
+    path_exists: Callable[[Path], bool] | None = None,
+) -> Path:
+    exists = path_exists or (lambda path: path.exists())
+    env_candidates = [
+        Path(value)
+        for name in (
+            "HERMES_LOCAL_OVOS_CORE",
+            "HERMES_OVOS_CORE_PATH",
+            "OVOS_CORE_PATH",
+        )
+        if (value := os.getenv(name, "").strip())
+    ]
+    if env_candidates:
+        return env_candidates[0]
+    repo_sibling = Path(__file__).resolve().parents[1].parent / "ovos-core"
+    candidates = [
+        *env_candidates,
+        Path("/opt/ai-stack/ovos-core"),
+        repo_sibling,
+        Path("/Users/nitinteckchandani/Projects/Hermes-Build/ovos-core"),
+    ]
+    for candidate in candidates:
+        if exists(candidate):
+            return candidate
+    return env_candidates[0] if env_candidates else Path("/opt/ai-stack/ovos-core")
+
+
+def _ensure_local_ovos_core_available(path: Path) -> None:
+    if path.exists():
+        return
+    raise RuntimeError(
+        "Local OVOS Core checkout not found at "
+        f"{path}. Set --local-ovos-core or HERMES_LOCAL_OVOS_CORE. "
+        "hermes deploy fails closed rather than guessing a platform-specific path."
+    )
 
 
 def _default_local_ovos_python(local_ovos_core: Path) -> Path:
@@ -275,6 +312,7 @@ class DeploymentPipeline:
         self.runner = runner or SubprocessCommandRunner()
 
     def resolve_expected_commit(self) -> str:
+        _ensure_local_ovos_core_available(self.config.local_ovos_core)
         if self.config.expected_ovos_commit:
             return self.config.expected_ovos_commit
         result = self.runner.run(
@@ -289,6 +327,7 @@ class DeploymentPipeline:
         return result.stdout.strip()
 
     def build_steps(self) -> list[DeploymentStep]:
+        _ensure_local_ovos_core_available(self.config.local_ovos_core)
         expected = self.config.expected_ovos_commit or self.resolve_expected_commit()
         config = replace(self.config, expected_ovos_commit=expected)
         steps: list[DeploymentStep] = []
@@ -628,7 +667,9 @@ class DeploymentPipeline:
 def cmd_deploy(args: Any) -> int:
     config = DeploymentConfig(
         remote_host=args.remote_host,
-        local_ovos_core=Path(args.local_ovos_core),
+        local_ovos_core=Path(args.local_ovos_core)
+        if args.local_ovos_core
+        else _default_local_ovos_core(),
         local_ovos_python=Path(args.local_ovos_python)
         if args.local_ovos_python
         else None,
@@ -641,6 +682,10 @@ def cmd_deploy(args: Any) -> int:
         execute=args.execute,
         report_file=Path(args.report_file) if args.report_file else None,
     )
-    report = DeploymentPipeline(config).run()
+    try:
+        report = DeploymentPipeline(config).run()
+    except RuntimeError as exc:
+        print(json.dumps({"error": str(exc), "status": "failed"}, sort_keys=True))
+        return 1
     print(json.dumps(report.to_jsonable(), indent=2, sort_keys=True))
     return 0 if report.status in {"planned", "healthy"} else 1

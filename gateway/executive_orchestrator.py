@@ -497,6 +497,7 @@ class ExecutiveOrchestrator:
             status="prepared",
             context_digest=context_digest,
             evidence_refs=evidence_refs,
+            context_source_counts=counts,
             warnings=tuple(warnings),
         )
         return prepared
@@ -518,6 +519,7 @@ class ExecutiveOrchestrator:
             "provider": _safe_label(provider),
             "model": _safe_label(model),
             "context_digest": prepared.context_digest,
+            "context_source_counts": dict(prepared.context_source_counts),
             "evidence_refs": list(prepared.evidence_refs),
             "safety_state": prepared.safety_state,
             "execution_state": "not_executed",
@@ -539,6 +541,7 @@ class ExecutiveOrchestrator:
             "stage": "response_produced",
             "status": status,
             "context_digest": prepared.context_digest,
+            "context_source_counts": dict(prepared.context_source_counts),
             "evidence_refs": list(prepared.evidence_refs),
             "safety_state": prepared.safety_state,
             "execution_state": "not_executed",
@@ -556,6 +559,7 @@ class ExecutiveOrchestrator:
         latency_ms: int | None = None,
     ) -> ExecutiveObservation:
         status = "completed" if result and result.get("final_response") else "failed"
+        response_text = str((result or {}).get("final_response") or "")
         trace_id = self.trace_sink.record({
             "correlation_id": prepared.correlation_id,
             "tenant_id_digest": _digest(prepared.tenant_id)[:16],
@@ -567,6 +571,8 @@ class ExecutiveOrchestrator:
             "model": _safe_label(model),
             "latency_ms": latency_ms,
             "context_digest": prepared.context_digest,
+            "context_source_counts": dict(prepared.context_source_counts),
+            "response_digest": _digest(response_text)[:16],
             "evidence_refs": list(prepared.evidence_refs),
             "safety_state": prepared.safety_state,
             "execution_state": "not_executed",
@@ -597,6 +603,7 @@ class ExecutiveOrchestrator:
         status: str,
         context_digest: str,
         evidence_refs: tuple[str, ...],
+        context_source_counts: Mapping[str, int] | None = None,
         warnings: tuple[str, ...] = (),
     ) -> str:
         return self.trace_sink.record({
@@ -607,6 +614,8 @@ class ExecutiveOrchestrator:
             "stage": stage,
             "status": status,
             "context_digest": context_digest,
+            "context_source_counts": dict(context_source_counts or {}),
+            "message_digest": _digest(_normalize_message(turn.message))[:16],
             "evidence_refs": list(evidence_refs),
             "safety_state": "not_executed",
             "execution_state": "not_executed",

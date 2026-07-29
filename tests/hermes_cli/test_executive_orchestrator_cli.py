@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import time
+
 from gateway.executive_orchestrator import (
     ExecutiveOrchestrator,
     InMemoryExecutiveTraceSink,
@@ -7,6 +10,7 @@ from gateway.executive_orchestrator import (
 )
 from hermes_cli.executive_orchestrator import (
     executive_orchestrator_status,
+    lookup_executive_traces,
     run_local_diagnostic_turn,
 )
 
@@ -70,3 +74,61 @@ def test_local_diagnostic_turn_uses_orchestrator_without_outbound_delivery(
     assert agent.closed is True
     assert len(agent.calls) == 1
     assert "EXECUTIVE ORCHESTRATOR CONTEXT" in agent.calls[0][0]
+
+
+def test_trace_lookup_returns_redacted_classification_and_safety_state(
+    tmp_path,
+) -> None:
+    trace_path = tmp_path / "executive_orchestrator_traces.jsonl"
+    now = int(time.time())
+    trace_path.write_text(
+        "\n".join([
+            json.dumps({
+                "classification": "executive_status",
+                "context_digest": "ctx123",
+                "context_source_counts": {"daily_brief": 1, "journal": 2},
+                "correlation_id": "eo_safe",
+                "event_id": "event_1",
+                "execution_state": "not_executed",
+                "message_digest": "abc123456789",
+                "provider": "custom",
+                "model": "gpt-4.1-mini",
+                "recorded_at": now,
+                "response_digest": "def987654321",
+                "safety_state": "normal_non_executing",
+                "stage": "reasoning_completed",
+                "status": "completed",
+                "trace_id": "trace_safe",
+            }),
+            json.dumps({
+                "classification": "ordinary_conversation",
+                "correlation_id": "eo_other",
+                "execution_state": "not_executed",
+                "recorded_at": now,
+                "stage": "reasoning_completed",
+                "status": "completed",
+                "trace_id": "trace_other",
+                "private_message": "API_KEY=sk-should-not-appear",
+            }),
+        ])
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = lookup_executive_traces(
+        trace_path=trace_path,
+        message_digest="abc123",
+        response_digest="def987",
+    )
+
+    dumped = json.dumps(result)
+    assert result["status"] == "ok"
+    assert result["redacted"] is True
+    assert len(result["matches"]) == 1
+    match = result["matches"][0]
+    assert match["classification"] == "executive_status"
+    assert match["safety_state"] == "normal_non_executing"
+    assert match["execution_state"] == "not_executed"
+    assert match["context_source_counts"] == {"daily_brief": 1, "journal": 2}
+    assert "sk-should-not-appear" not in dumped
+    assert "private_message" not in dumped
