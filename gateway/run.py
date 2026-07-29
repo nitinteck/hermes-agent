@@ -7412,6 +7412,16 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             )
         except Exception:
             pass
+        try:
+            from gateway.executive_orchestrator import is_executive_orchestrator_enabled
+
+            _eo_enabled = is_executive_orchestrator_enabled()
+            logger.info(
+                "Executive Orchestrator: %s (execution_boundary=not_executed)",
+                "ENABLED" if _eo_enabled else "DISABLED",
+            )
+        except Exception:
+            logger.warning("Executive Orchestrator: status unavailable; failing closed")
         # Redaction status: ON by default (#17691). Surface a prominent
         # warning if an operator has explicitly opted out so they don't
         # forget the downgrade is active — the redactor snapshots its
@@ -21064,7 +21074,55 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                     _conversation_kwargs["moa_config"] = moa_config
                 if _persist_user_timestamp_override is not None:
                     _conversation_kwargs["persist_user_timestamp"] = _persist_user_timestamp_override
-                result = agent.run_conversation(_api_run_message, **_conversation_kwargs)
+                from gateway.executive_orchestrator import (
+                    ExecutiveTurnInput,
+                    get_default_executive_orchestrator,
+                    is_executive_orchestrator_enabled,
+                    run_reasoning_with_optional_orchestrator,
+                )
+
+                _eo_enabled = is_executive_orchestrator_enabled()
+                _eo_turn = ExecutiveTurnInput(
+                    tenant_id=os.getenv("OVOS_DEFAULT_TENANT_ID", "default"),
+                    conversation_id=session_id,
+                    actor_id=str(source.user_id or "unknown"),
+                    actor_name=source.user_name,
+                    platform=source.platform.value if source.platform else "unknown",
+                    chat_id=str(source.chat_id or ""),
+                    message=_run_message,
+                    session_id=session_id,
+                    session_key=session_key,
+                    trace_metadata={
+                        "gateway_stage": "pre_reasoning",
+                        "platform": source.platform.value if source.platform else "unknown",
+                    },
+                )
+                _eo_result = run_reasoning_with_optional_orchestrator(
+                    agent=agent,
+                    message=_api_run_message,
+                    conversation_kwargs=_conversation_kwargs,
+                    turn=_eo_turn,
+                    provider=str(turn_route.get("runtime", {}).get("provider") or "unknown"),
+                    model=str(turn_route.get("model") or "unknown"),
+                    enabled=_eo_enabled,
+                    orchestrator=get_default_executive_orchestrator(),
+                )
+                if _eo_enabled:
+                    _eo_meta = {}
+                    if isinstance(_eo_result.result, dict):
+                        _eo_meta = dict(_eo_result.result.get("executive_orchestrator") or {})
+                    logger.info(
+                        "executive_orchestrator_turn correlation_id=%s classification=%s "
+                        "context_digest=%s provider=%s model=%s safety_state=%s execution_state=%s",
+                        _eo_meta.get("correlation_id") or "blocked",
+                        _eo_meta.get("classification") or "unknown",
+                        _eo_meta.get("context_digest") or "",
+                        str(turn_route.get("runtime", {}).get("provider") or "unknown"),
+                        str(turn_route.get("model") or "unknown"),
+                        _eo_meta.get("safety_state") or "blocked",
+                        _eo_meta.get("execution_state") or "not_executed",
+                    )
+                result = dict(_eo_result.result)
             finally:
                 unregister_gateway_notify(_approval_session_key)
                 # Cancel any pending clarify entries so blocked agent
@@ -21225,6 +21283,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                     "output_tokens": _output_toks,
                     "model": _resolved_model,
                     "context_length": _context_length,
+                    "executive_orchestrator": result.get("executive_orchestrator"),
                 }
 
             # Scan tool results for MEDIA:<path> tags that need to be delivered
@@ -21344,6 +21403,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 "session_id": effective_session_id,
                 "response_previewed": result.get("response_previewed", False),
                 "response_transformed": result.get("response_transformed", False),
+                "executive_orchestrator": result.get("executive_orchestrator"),
                 # Pass through the agent_persisted flag so the persistence block
                 # above can correctly determine whether the codex app-server path
                 # self-persisted (it didn't — see codex_runtime.py).  Default

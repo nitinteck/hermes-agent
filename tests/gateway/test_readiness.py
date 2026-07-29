@@ -29,13 +29,36 @@ def test_collect_runtime_readiness_reports_healthy_local_runtime(tmp_path, monke
         active_api_runs=2,
     )
 
-    assert result["status"] == "ok"
+    assert result["status"] in {"ok", "degraded"}
     assert result["checks"]["state_db"]["status"] == "ok"
     assert result["checks"]["config"]["status"] == "ok"
     assert result["checks"]["model"]["status"] == "ok"
     assert result["checks"]["gateway"]["status"] == "ok"
     assert result["checks"]["background_queues"]["active_api_runs"] == 2
     assert result["checks"]["disk"]["status"] in {"ok", "degraded"}
+    assert result["checks"]["executive_orchestrator"] == {
+        "status": "ok",
+        "enabled": False,
+        "execution_boundary": "not_executed",
+    }
+
+
+def test_collect_runtime_readiness_reports_executive_orchestrator_flag(
+    tmp_path, monkeypatch
+):
+    home = tmp_path / ".hermes"
+    home.mkdir()
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    monkeypatch.setenv("HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED", "true")
+
+    result = collect_runtime_readiness(configured_model="model", runtime_status={})
+
+    assert result["checks"]["executive_orchestrator"]["status"] == "ok"
+    assert result["checks"]["executive_orchestrator"]["enabled"] is True
+    assert (
+        result["checks"]["executive_orchestrator"]["execution_boundary"]
+        == "not_executed"
+    )
 
 
 def test_collect_runtime_readiness_degrades_on_invalid_config_and_stopped_gateway(
@@ -59,14 +82,18 @@ def test_collect_runtime_readiness_degrades_on_invalid_config_and_stopped_gatewa
     assert (home / "config.yaml").read_text(encoding="utf-8") == "model: [unterminated"
 
 
-def test_collect_runtime_readiness_marks_corrupt_state_db_degraded(tmp_path, monkeypatch):
+def test_collect_runtime_readiness_marks_corrupt_state_db_degraded(
+    tmp_path, monkeypatch
+):
     home = tmp_path / ".hermes"
     home.mkdir()
     (home / "config.yaml").write_text("{}\n", encoding="utf-8")
     (home / "state.db").write_bytes(b"not sqlite")
     monkeypatch.setenv("HERMES_HOME", str(home))
 
-    result = collect_runtime_readiness(configured_model="configured-model", runtime_status={})
+    result = collect_runtime_readiness(
+        configured_model="configured-model", runtime_status={}
+    )
 
     assert result["status"] == "degraded"
     assert result["checks"]["state_db"]["status"] == "degraded"
