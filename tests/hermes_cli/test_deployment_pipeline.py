@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from hermes_cli.deployment import CommandResult, DeploymentConfig, DeploymentPipeline
+from hermes_cli.deployment import (
+    CommandResult,
+    DeploymentConfig,
+    DeploymentPipeline,
+    _ssh_command,
+)
 
 
 class FakeRunner:
@@ -121,3 +126,22 @@ def test_health_requires_hermes_mvp_migration(tmp_path: Path) -> None:
     plan = "\n".join(pipeline.plan())
 
     assert "grep -q 20260729130000" in plan
+
+
+def test_ssh_command_quotes_remote_script_as_single_shell_argument() -> None:
+    command = _ssh_command(DeploymentConfig(), "set -eu; false; echo unsafe")
+
+    assert command[:4] == ["ssh", "hermes-vps", "bash", "-lc"]
+    assert command[4] == "'set -eu; false; echo unsafe'"
+
+
+def test_remote_fetch_uses_https_url_and_validates_expected_commit(
+    tmp_path: Path,
+) -> None:
+    pipeline = DeploymentPipeline(_config(tmp_path), runner=FakeRunner())
+
+    plan = "\n".join(pipeline.plan())
+
+    assert "fetch --force https://github.com/nitinteck/ovos-core.git" in plan
+    assert "refs/remotes/hermes-deploy/main" in plan
+    assert "origin main" not in plan

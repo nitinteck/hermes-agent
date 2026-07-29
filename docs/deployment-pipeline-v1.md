@@ -45,16 +45,17 @@ hermes deploy --execute --expected-ovos-commit <sha>
    EDE/Hermes MVP pgtap suites.
 3. Verify local `main == origin/main`.
 4. Verify remote tracked files are clean.
-5. Run production migration dry-run.
-6. Pull/reset remote OVOS to `origin/main`.
+5. Fetch latest OVOS `main` from the read-only HTTPS repository URL.
+6. Pull/reset remote OVOS to the fetched and verified commit.
 7. Verify the editable OVOS install in the Hermes venv, reinstalling only if
    the active import path is not the deployed OVOS checkout.
-8. Apply production migrations.
-9. Restart only `hermes-gateway.service`.
-10. Wait for active service state.
-11. Run health verification.
-12. Run smoke tests.
-13. Emit a JSON deployment report.
+8. Run production migration dry-run against the newly fetched migration files.
+9. Apply production migrations.
+10. Restart only `hermes-gateway.service`.
+11. Wait for active service state.
+12. Run health verification.
+13. Run smoke tests.
+14. Emit a JSON deployment report.
 
 If any step fails, later steps do not run.
 

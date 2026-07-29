@@ -70,6 +70,7 @@ class DeploymentConfig:
         "/Users/nitinteckchandani/Projects/Hermes-Build/ovos-core"
     )
     local_ovos_python: Path | None = None
+    remote_ovos_repo_url: str = "https://github.com/nitinteck/ovos-core.git"
     remote_ovos_core: str = "/opt/ai-stack/ovos-core"
     remote_hermes_agent: str = "/opt/ai-stack/hermes-agent"
     service: str = "hermes-gateway.service"
@@ -140,7 +141,7 @@ def _shell_join(parts: list[str]) -> str:
 
 
 def _ssh_command(config: DeploymentConfig, script: str) -> list[str]:
-    return ["ssh", config.remote_host, "bash", "-lc", script]
+    return ["ssh", config.remote_host, "bash", "-lc", shlex.quote(script)]
 
 
 def _default_local_ovos_python(local_ovos_core: Path) -> Path:
@@ -427,19 +428,24 @@ class DeploymentPipeline:
                 ),
             ),
             DeploymentStep(
-                "remote dry-run migrations",
+                "fetch latest ovos main",
                 remote_script=(
-                    f"set -eu; cd {shlex.quote(config.remote_ovos_core)}; "
-                    "npx supabase db push --dry-run"
+                    f"set -eu; git -C {shlex.quote(config.remote_ovos_core)} "
+                    f"fetch --force {shlex.quote(config.remote_ovos_repo_url)} "
+                    "main:refs/remotes/hermes-deploy/main; "
+                    f'test "$(git -C {shlex.quote(config.remote_ovos_core)} '
+                    'rev-parse refs/remotes/hermes-deploy/main)" '
+                    f"= {shlex.quote(expected)}"
                 ),
-                timeout=300,
+                mutates=True,
+                timeout=180,
             ),
             DeploymentStep(
                 "pull latest ovos main",
                 remote_script=(
-                    f"set -eu; git -C {shlex.quote(config.remote_ovos_core)} fetch origin main; "
-                    f"git -C {shlex.quote(config.remote_ovos_core)} switch main; "
-                    f"git -C {shlex.quote(config.remote_ovos_core)} reset --hard origin/main; "
+                    f"set -eu; git -C {shlex.quote(config.remote_ovos_core)} switch main; "
+                    f"git -C {shlex.quote(config.remote_ovos_core)} "
+                    "reset --hard refs/remotes/hermes-deploy/main; "
                     f'test "$(git -C {shlex.quote(config.remote_ovos_core)} rev-parse HEAD)" '
                     f"= {shlex.quote(expected)}"
                 ),
@@ -461,6 +467,14 @@ class DeploymentPipeline:
                     f"else {shlex.quote(_remote_python(config))} -m pip install -e .; fi"
                 ),
                 mutates=True,
+                timeout=300,
+            ),
+            DeploymentStep(
+                "remote dry-run migrations",
+                remote_script=(
+                    f"set -eu; cd {shlex.quote(config.remote_ovos_core)}; "
+                    "npx supabase db push --dry-run"
+                ),
                 timeout=300,
             ),
             DeploymentStep(
@@ -581,6 +595,7 @@ def cmd_deploy(args: Any) -> int:
         local_ovos_python=Path(args.local_ovos_python)
         if args.local_ovos_python
         else None,
+        remote_ovos_repo_url=args.remote_ovos_repo_url,
         remote_ovos_core=args.remote_ovos_core,
         remote_hermes_agent=args.remote_hermes_agent,
         service=args.service,
