@@ -286,7 +286,7 @@ def test_reasoning_status_flags_default_safe_rollout(monkeypatch) -> None:
     assert is_reasoning_planner_enabled() is True
     assert is_skill_selection_enabled() is True
     assert is_ai_provider_selection_enabled() is True
-    assert is_planning_engine_enabled() is False
+    assert is_planning_engine_enabled() is True
     assert status["execution_boundary"] == "not_executed"
     assert status["live_execution_enabled"] is False
     assert status["external_calls_enabled"] is False

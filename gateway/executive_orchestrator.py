@@ -83,6 +83,7 @@ class PreparedExecutiveTurn:
     context_digest: str
     reasoning_plan: Mapping[str, Any] = field(default_factory=dict)
     response_plan: Mapping[str, Any] = field(default_factory=dict)
+    planning_snapshot: Mapping[str, Any] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
 
 
@@ -406,6 +407,7 @@ def run_reasoning_with_optional_orchestrator(
             "intelligence_snapshot": _intelligence_snapshot(prepared),
             "reasoning_plan": dict(prepared.reasoning_plan),
             "response_plan": dict(prepared.response_plan),
+            "planning_snapshot": dict(prepared.planning_snapshot),
         }
     return OrchestratedReasoningResult(
         result=result,
@@ -503,7 +505,9 @@ class ExecutiveOrchestrator:
         )
         reasoning_plan: Mapping[str, Any] = {}
         response_plan: Mapping[str, Any] = {}
+        planning_snapshot: Mapping[str, Any] = {"status": "not_eligible"}
         rendered_reasoning_plan = ""
+        rendered_planning_snapshot = ""
         if _executive_reasoning_enabled():
             try:
                 from gateway.executive_reasoning import (
@@ -530,6 +534,32 @@ class ExecutiveOrchestrator:
                 rendered_reasoning_plan = render_reasoning_result_for_prompt(
                     reasoning_result
                 )
+                try:
+                    from gateway.executive_planning import (
+                        ExecutivePlanningRequest,
+                        build_default_planning_engine,
+                        render_planning_snapshot_for_prompt,
+                    )
+
+                    planning_result = build_default_planning_engine().plan(
+                        ExecutivePlanningRequest.from_reasoning_plan(
+                            reasoning_plan=reasoning_result.reasoning_plan,
+                            normalized_user_request=normalized,
+                            tenant_id=turn.tenant_id,
+                            actor_id=turn.actor_id,
+                            context_source_counts=counts,
+                            evidence_refs=evidence_refs,
+                            trace_metadata=dict(turn.trace_metadata),
+                            safety_state=safety_state,
+                        )
+                    )
+                    planning_snapshot = planning_result.safe_trace()
+                    if planning_result.eligible:
+                        rendered_planning_snapshot = (
+                            render_planning_snapshot_for_prompt(planning_result)
+                        )
+                except Exception:
+                    warnings.append("executive_planning_unavailable")
             except Exception:
                 warnings.append("executive_reasoning_unavailable")
 
@@ -561,6 +591,7 @@ class ExecutiveOrchestrator:
             turn.deterministic_command_result,
             correlation_id,
             rendered_reasoning_plan,
+            rendered_planning_snapshot,
         )
         prepared = PreparedExecutiveTurn(
             correlation_id=correlation_id,
@@ -581,6 +612,7 @@ class ExecutiveOrchestrator:
             context_digest=context_digest,
             reasoning_plan=reasoning_plan,
             response_plan=response_plan,
+            planning_snapshot=planning_snapshot,
             warnings=tuple(warnings),
         )
         self._record_stage(
@@ -619,6 +651,7 @@ class ExecutiveOrchestrator:
             "executive_intelligence_snapshot": _intelligence_snapshot(prepared),
             "reasoning_plan": dict(prepared.reasoning_plan),
             "response_plan": dict(prepared.response_plan),
+            "planning_snapshot": dict(prepared.planning_snapshot),
             "safety_state": prepared.safety_state,
             "execution_state": "not_executed",
             "warnings": list(prepared.warnings),
@@ -645,6 +678,7 @@ class ExecutiveOrchestrator:
             "executive_intelligence_snapshot": _intelligence_snapshot(prepared),
             "reasoning_plan": dict(prepared.reasoning_plan),
             "response_plan": dict(prepared.response_plan),
+            "planning_snapshot": dict(prepared.planning_snapshot),
             "safety_state": prepared.safety_state,
             "execution_state": "not_executed",
             "warnings": list(prepared.warnings),
@@ -678,6 +712,7 @@ class ExecutiveOrchestrator:
             "executive_intelligence_snapshot": _intelligence_snapshot(prepared),
             "reasoning_plan": dict(prepared.reasoning_plan),
             "response_plan": dict(prepared.response_plan),
+            "planning_snapshot": dict(prepared.planning_snapshot),
             "response_digest": _digest(response_text)[:16],
             "evidence_refs": list(prepared.evidence_refs),
             "safety_state": prepared.safety_state,
@@ -1166,6 +1201,7 @@ def _build_reasoning_message(
     deterministic_result: str | None,
     correlation_id: str,
     rendered_reasoning_plan: str = "",
+    rendered_planning_snapshot: str = "",
 ) -> str:
     sections = [
         "EXECUTIVE ORCHESTRATOR CONTEXT",
@@ -1182,6 +1218,11 @@ def _build_reasoning_message(
         sections.extend([
             "",
             rendered_reasoning_plan,
+        ])
+    if rendered_planning_snapshot:
+        sections.extend([
+            "",
+            rendered_planning_snapshot,
         ])
     if deterministic_result:
         sections.extend([

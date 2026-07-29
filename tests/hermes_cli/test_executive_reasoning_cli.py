@@ -20,7 +20,7 @@ def test_reasoning_status_is_operator_safe_and_non_executing(monkeypatch) -> Non
     assert status["reasoning_planner_enabled"] is True
     assert status["skill_selection_enabled"] is True
     assert status["ai_provider_selection_enabled"] is True
-    assert status["planning_engine_enabled"] is False
+    assert status["planning_engine_enabled"] is True
     assert status["execution_boundary"] == "not_executed"
     assert status["live_execution_enabled"] is False
     assert status["external_calls_enabled"] is False
