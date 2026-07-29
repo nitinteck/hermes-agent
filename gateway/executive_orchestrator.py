@@ -392,6 +392,7 @@ def run_reasoning_with_optional_orchestrator(
             "no_execution_confirmed": True,
             "warnings": merged_warnings,
             "context_provider_snapshot": _context_provider_snapshot(prepared),
+            "intelligence_snapshot": _intelligence_snapshot(prepared),
         }
     return OrchestratedReasoningResult(
         result=result,
@@ -567,6 +568,7 @@ class ExecutiveOrchestrator:
             "context_source_counts": dict(prepared.context_source_counts),
             "evidence_refs": list(prepared.evidence_refs),
             "context_provider_snapshot": _context_provider_snapshot(prepared),
+            "executive_intelligence_snapshot": _intelligence_snapshot(prepared),
             "safety_state": prepared.safety_state,
             "execution_state": "not_executed",
             "warnings": list(prepared.warnings),
@@ -590,6 +592,7 @@ class ExecutiveOrchestrator:
             "context_source_counts": dict(prepared.context_source_counts),
             "evidence_refs": list(prepared.evidence_refs),
             "context_provider_snapshot": _context_provider_snapshot(prepared),
+            "executive_intelligence_snapshot": _intelligence_snapshot(prepared),
             "safety_state": prepared.safety_state,
             "execution_state": "not_executed",
             "warnings": list(prepared.warnings),
@@ -620,6 +623,7 @@ class ExecutiveOrchestrator:
             "context_digest": prepared.context_digest,
             "context_source_counts": dict(prepared.context_source_counts),
             "context_provider_snapshot": _context_provider_snapshot(prepared),
+            "executive_intelligence_snapshot": _intelligence_snapshot(prepared),
             "response_digest": _digest(response_text)[:16],
             "evidence_refs": list(prepared.evidence_refs),
             "safety_state": prepared.safety_state,
@@ -664,6 +668,9 @@ class ExecutiveOrchestrator:
             "context_digest": context_digest,
             "context_source_counts": dict(context_source_counts or {}),
             "context_provider_snapshot": _context_provider_snapshot_from_trace(
+                turn.trace_metadata
+            ),
+            "executive_intelligence_snapshot": _intelligence_snapshot_from_trace(
                 turn.trace_metadata
             ),
             "message_digest": _digest(_normalize_message(turn.message))[:16],
@@ -848,6 +855,50 @@ def _with_runtime_context(
                 or (),
                 agent=agent,
             )
+            intelligence_snapshot = None
+            try:
+                from gateway.executive_intelligence import (
+                    IntelligenceSelectionRequest,
+                    build_default_intelligence_engine,
+                    is_executive_intelligence_enabled,
+                    render_intelligence_snapshot_for_reasoning,
+                )
+
+                if is_executive_intelligence_enabled():
+                    intelligence_snapshot = build_default_intelligence_engine().run(
+                        IntelligenceSelectionRequest(
+                            tenant_id=turn.tenant_id,
+                            user_id=turn.actor_id,
+                            request_classification=classification,
+                            ranking_profile=_ranking_profile_for_classification(
+                                classification
+                            ),
+                            context_snapshot=snapshot,
+                            max_signals=12,
+                        )
+                    )
+                    rendered_intelligence = render_intelligence_snapshot_for_reasoning(
+                        intelligence_snapshot,
+                        max_chars=max(
+                            600,
+                            (limits or ExecutiveContextLimits()).max_context_chars // 3,
+                        ),
+                    )
+                    runtime_context["executive_intelligence"] = (
+                        ContextItem(
+                            source="executive_intelligence",
+                            reference_id=intelligence_snapshot.snapshot_digest,
+                            title="Executive Intelligence Snapshot",
+                            summary=rendered_intelligence,
+                        ),
+                    )
+                    trace_metadata["executive_intelligence_snapshot"] = (
+                        intelligence_snapshot.safe_trace_metadata()
+                    )
+            except Exception:
+                trace_metadata["executive_intelligence_warning"] = (
+                    "intelligence_unavailable"
+                )
             runtime_context.update(snapshot.to_context_items())
             trace_metadata["executive_context_snapshot"] = (
                 snapshot.safe_trace_metadata()
@@ -952,6 +1003,22 @@ def _context_provider_snapshot(prepared: PreparedExecutiveTurn) -> Mapping[str, 
     return _context_provider_snapshot_from_trace(prepared.trace_metadata)
 
 
+def _intelligence_snapshot(prepared: PreparedExecutiveTurn) -> Mapping[str, Any]:
+    return _intelligence_snapshot_from_trace(prepared.trace_metadata)
+
+
+def _intelligence_snapshot_from_trace(
+    trace_metadata: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    value = trace_metadata.get("executive_intelligence_snapshot")
+    if isinstance(value, Mapping):
+        return dict(value)
+    warning = trace_metadata.get("executive_intelligence_warning")
+    if warning:
+        return {"status": _safe_label(str(warning))}
+    return {}
+
+
 def _context_provider_snapshot_from_trace(
     trace_metadata: Mapping[str, Any],
 ) -> Mapping[str, Any]:
@@ -962,6 +1029,14 @@ def _context_provider_snapshot_from_trace(
     if warning:
         return {"status": _safe_label(str(warning))}
     return {}
+
+
+def _ranking_profile_for_classification(classification: str) -> str:
+    if classification == "daily_brief":
+        return "morning_brief"
+    if classification == "executive_status":
+        return "direct_request"
+    return "direct_request"
 
 
 def _contains_any(text: str, needles: tuple[str, ...]) -> bool:

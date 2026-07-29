@@ -15,6 +15,8 @@ flowchart TD
   C --> D["Executive Orchestrator"]
   D --> E["Executive Context Provider Framework"]
   E --> F["Local Hermes, OVOS and authorised read-only providers"]
+  E --> I["Executive Intelligence Engine"]
+  I --> D
   D --> G["AIAgent reasoning provider"]
   G --> D
   D --> H["Gateway response delivery"]
@@ -45,6 +47,10 @@ needs, normalises Google events into Hermes-owned contributions, and never
 exposes OAuth tokens, attendee email addresses, event descriptions, raw Google
 payloads or write APIs to the reasoning provider.
 
+The Executive Intelligence Engine owns deterministic derivation of facts,
+signals and transparent scores from canonical context snapshots. It cannot call
+integrations, MCP, credentials, LLMs or execution interfaces.
+
 The reasoning provider remains the configured LLM implementation. It reasons
 over context selected by Hermes; it does not decide which organisational
 context to retrieve.
@@ -69,10 +75,11 @@ The gateway path is intentionally not redesigned.
 5. `run_reasoning_with_optional_orchestrator(...)` prepares the turn when
    `HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED=true`.
 6. `ExecutiveContextCollectionService` gathers bounded local context.
-7. `ExecutiveOrchestrator.prepare_turn(...)` constructs the reasoning request.
-8. `AIAgent.run_conversation(...)` calls the configured provider/model.
-9. `ExecutiveOrchestrator.observe_response(...)` records safe trace metadata.
-10. The existing gateway delivery path returns the response.
+7. `ExecutiveIntelligenceEngine` derives request-scoped signals when enabled.
+8. `ExecutiveOrchestrator.prepare_turn(...)` constructs the reasoning request.
+9. `AIAgent.run_conversation(...)` calls the configured provider/model.
+10. `ExecutiveOrchestrator.observe_response(...)` records safe trace metadata.
+11. The existing gateway delivery path returns the response.
 
 ## Execution Boundary
 
@@ -95,8 +102,8 @@ Write or unknown access cannot be used for executive context collection.
 
 ## Next Milestone
 
-`HERMES MVP v0.2 - READ-ONLY EXECUTIVE CONTEXT CONNECTORS`
+`Hermes Executive Reasoning Engine v1`
 
-That milestone may add Gmail and ClickUp as read-only context providers and
-may authorise live Google Calendar reads after user OAuth review. It must not
-add external writes or live execution.
+That milestone adds explicit ReasoningPlan and ResponsePlan contracts above
+Executive Intelligence. It must not authorise Calendar reads, add external
+writes or enable live execution.
