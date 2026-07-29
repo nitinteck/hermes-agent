@@ -8,7 +8,7 @@ import shlex
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -57,8 +57,8 @@ class SubprocessCommandRunner:
         except subprocess.TimeoutExpired as exc:
             return CommandResult(
                 code=124,
-                stdout=exc.stdout or "",
-                stderr=exc.stderr or f"timed out after {timeout}s",
+                stdout=_text_output(exc.stdout),
+                stderr=_text_output(exc.stderr) or f"timed out after {timeout}s",
             )
         return CommandResult(completed.returncode, completed.stdout, completed.stderr)
 
@@ -130,6 +130,14 @@ class DeploymentReport:
 
 def _tail(value: str, limit: int = 2000) -> str:
     return value[-limit:]
+
+
+def _text_output(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
 
 
 def _utc_stamp() -> str:
@@ -282,10 +290,7 @@ class DeploymentPipeline:
 
     def build_steps(self) -> list[DeploymentStep]:
         expected = self.config.expected_ovos_commit or self.resolve_expected_commit()
-        config = DeploymentConfig(**{
-            **self.config.__dict__,
-            "expected_ovos_commit": expected,
-        })
+        config = replace(self.config, expected_ovos_commit=expected)
         steps: list[DeploymentStep] = []
         if not config.skip_local_validation:
             py = _local_ovos_python(config)
