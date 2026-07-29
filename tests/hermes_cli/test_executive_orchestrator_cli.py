@@ -58,7 +58,14 @@ def test_status_is_operator_safe_and_non_executing(monkeypatch) -> None:
     assert status["reasoning_planner_enabled"] is True
     assert status["skill_selection_enabled"] is True
     assert status["ai_provider_selection_enabled"] is True
-    assert status["planning_engine_enabled"] is False
+    assert status["planning_engine_enabled"] is True
+    assert status["planning_registry_enabled"] is True
+    assert status["deterministic_planning_enabled"] is True
+    assert status["model_assisted_planning_enabled"] is False
+    assert status["candidate_evaluation_enabled"] is True
+    assert status["proposed_action_generation_enabled"] is True
+    assert status["approval_engine_enabled"] is False
+    assert status["execution_engine_enabled"] is False
     assert status["mock_executive_context_provider_enabled"] is False
     assert status["mcp_context_adapter_enabled"] is False
     assert status["execution_boundary"] == "not_executed"

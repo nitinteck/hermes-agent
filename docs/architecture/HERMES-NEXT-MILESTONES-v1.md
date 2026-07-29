@@ -4,19 +4,22 @@ Last updated: 2026-07-29
 
 ## Current Milestone
 
-`HERMES EXECUTIVE REASONING ENGINE v1`
+`HERMES EXECUTIVE PLANNING ENGINE v1`
 
-Completion means deterministic `ReasoningPlan` and `ResponsePlan` contracts are
-implemented, validated, merged and deployed in the normal Orchestrator path.
+Completion means deterministic `ExecutivePlan`, `CandidatePlan`,
+`PlanningSnapshot`, `ApprovalRequirement` and descriptive
+`ProposedActionReference` contracts are implemented, validated, merged and
+deployed in the normal Orchestrator path.
 
 ## Next Milestone
 
-`HERMES EXECUTIVE PLANNING ENGINE v1`
+`HERMES EXECUTIVE APPROVAL ENGINE v1 DESIGN`
 
 Scope:
 
-- turn safe reasoning plans into non-executing planning drafts
-- preserve approval and execution boundaries
+- define authorised human approval contracts
+- reject model, system, stale, expired, duplicate and unauthorised approvals
+- preserve execution boundary
 - keep live external execution disabled
 
 ## Later Milestone

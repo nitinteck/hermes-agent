@@ -118,6 +118,7 @@ def executive_orchestrator_status() -> dict[str, Any]:
         is_reasoning_planner_enabled,
         is_skill_selection_enabled,
     )
+    from gateway.executive_planning import build_planning_status
     from gateway.google_calendar_context_provider import (
         GoogleCalendarProviderConfig,
         google_calendar_capability_status,
@@ -126,6 +127,7 @@ def executive_orchestrator_status() -> dict[str, Any]:
     calendar_config = GoogleCalendarProviderConfig.from_environment()
 
     intelligence_registry = build_default_intelligence_registry()
+    planning_status = build_planning_status()
     return {
         "enabled": is_executive_orchestrator_enabled(),
         "executive_context_provider_framework_enabled": (
@@ -147,6 +149,19 @@ def executive_orchestrator_status() -> dict[str, Any]:
         "skill_selection_enabled": is_skill_selection_enabled(),
         "ai_provider_selection_enabled": is_ai_provider_selection_enabled(),
         "planning_engine_enabled": is_planning_engine_enabled(),
+        "planning_registry_enabled": planning_status["registry_enabled"],
+        "deterministic_planning_enabled": planning_status[
+            "deterministic_planning_enabled"
+        ],
+        "model_assisted_planning_enabled": planning_status[
+            "model_assisted_planning_enabled"
+        ],
+        "candidate_evaluation_enabled": planning_status["candidate_evaluation_enabled"],
+        "proposed_action_generation_enabled": planning_status[
+            "proposed_action_generation_enabled"
+        ],
+        "approval_engine_enabled": planning_status["approval_engine_enabled"],
+        "execution_engine_enabled": planning_status["execution_engine_enabled"],
         "mock_executive_context_provider_enabled": (
             is_executive_context_mock_provider_enabled()
         ),
@@ -646,6 +661,7 @@ def _summarise_trace_matches(
             "context_source_counts": latest.get("context_source_counts") or {},
             "reasoning_plan": _safe_reasoning_trace(latest.get("reasoning_plan")),
             "response_plan": _safe_response_trace(latest.get("response_plan")),
+            "planning_snapshot": _safe_planning_trace(latest.get("planning_snapshot")),
             "message_digest": latest.get("message_digest"),
             "response_digest": latest.get("response_digest"),
             "stages": [item.get("stage") for item in ordered if item.get("stage")],
@@ -685,6 +701,24 @@ def _safe_response_trace(value: Any) -> dict[str, Any]:
         "expected_structure": list(value.get("expected_structure") or []),
         "execution_required": value.get("execution_required"),
         "execution_permitted": value.get("execution_permitted"),
+    }
+
+
+def _safe_planning_trace(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        "planning_request_id": value.get("planning_request_id"),
+        "status": value.get("status"),
+        "strategy_id": value.get("strategy_id"),
+        "eligible": value.get("eligible"),
+        "reason_code": value.get("reason_code"),
+        "candidate_count": value.get("candidate_count"),
+        "recommended_plan_id": value.get("recommended_plan_id"),
+        "approval_status": value.get("approval_status"),
+        "execution_status": value.get("execution_status"),
+        "external_calls_enabled": value.get("external_calls_enabled"),
+        "model_assisted": value.get("model_assisted"),
     }
 
 

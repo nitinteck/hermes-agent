@@ -9,12 +9,14 @@ Executive Context answers: what source facts and relevant records are available?
 Executive Intelligence answers: what deterministic executive signals can be
 derived from those facts?
 
-Executive Insights, recommendations, forecasts and proposed actions remain
-separate future layers.
+Executive Insights, recommendations, forecasts and proposed action references
+remain separate layers. Planning Engine v1 may create descriptive
+`ProposedActionReference` records; Intelligence v1 remains facts and signals
+only.
 
 Runtime flow:
 
-`ExecutiveContextSnapshot -> ExecutiveIntelligenceEngine -> ExecutiveIntelligenceSnapshot -> Context Composer -> Executive Orchestrator`
+`ExecutiveContextSnapshot -> ExecutiveIntelligenceEngine -> ExecutiveIntelligenceSnapshot -> Executive Reasoning -> optional Executive Planning -> Context Composer -> Executive Orchestrator`
 
 The engine does not call integrations, load credentials, invoke MCP, query
 Google Calendar, call an LLM, write databases, send messages or execute actions.

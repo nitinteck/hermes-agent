@@ -19,6 +19,8 @@ flowchart TD
   I --> D
   D --> R["Executive Reasoning Engine"]
   R --> D
+  D --> P["Executive Planning Engine"]
+  P --> D
   D --> G["AIAgent reasoning provider"]
   G --> D
   D --> H["Gateway response delivery"]
@@ -59,6 +61,12 @@ confidence labels, reasoning mode, selected skill labels, provider abstraction
 and response structure. It cannot call integrations, execute skills, load
 credentials, invoke MCP, call subprocesses or authorise execution.
 
+The Executive Planning Engine owns deterministic candidate plans, proposed
+milestones, steps, dependencies, decision points, risks, mitigations,
+transparent evaluation and recommendations. It cannot approve plans, execute
+plans, call integrations, execute Skills, invoke MCP, call subprocesses or
+authorise execution.
+
 The reasoning provider remains the configured LLM implementation. It reasons
 over context selected by Hermes; it does not decide which organisational
 context to retrieve.
@@ -85,10 +93,12 @@ The gateway path is intentionally not redesigned.
 6. `ExecutiveContextCollectionService` gathers bounded local context.
 7. `ExecutiveIntelligenceEngine` derives request-scoped signals when enabled.
 8. `ExecutiveReasoningEngine` creates a `ReasoningPlan` and `ResponsePlan`.
-9. `ExecutiveOrchestrator.prepare_turn(...)` constructs the reasoning request.
-10. `AIAgent.run_conversation(...)` calls the configured provider/model.
-11. `ExecutiveOrchestrator.observe_response(...)` records safe trace metadata.
-12. The existing gateway delivery path returns the response.
+9. `ExecutivePlanningEngine` creates a `PlanningSnapshot` when the
+   `ReasoningPlan` is eligible.
+10. `ExecutiveOrchestrator.prepare_turn(...)` constructs the reasoning request.
+11. `AIAgent.run_conversation(...)` calls the configured provider/model.
+12. `ExecutiveOrchestrator.observe_response(...)` records safe trace metadata.
+13. The existing gateway delivery path returns the response.
 
 ## Execution Boundary
 
@@ -111,15 +121,16 @@ Write or unknown access cannot be used for executive context collection.
 
 ## Current Milestone
 
-`Hermes Executive Reasoning Engine v1`
+`Hermes Executive Planning Engine v1`
 
-This milestone adds explicit `ReasoningPlan` and `ResponsePlan` contracts above
-Executive Intelligence. It does not authorise Calendar reads, add external
-writes or enable live execution.
+This milestone adds deterministic `ExecutivePlan`, `CandidatePlan`,
+`PlanningSnapshot`, `ApprovalRequirement` and `ProposedActionReference`
+contracts above Executive Reasoning. It does not authorise Calendar reads, add
+external writes or enable live execution.
 
 ## Next Milestone
 
-`Hermes Executive Planning Engine v1`
+`Hermes Executive Approval Engine v1 Design`
 
-The Planning Engine remains disabled until that milestone is explicitly
-implemented and authorised.
+The Approval Engine remains disabled until that milestone is explicitly
+designed, implemented and authorised.

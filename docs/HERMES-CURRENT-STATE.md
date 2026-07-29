@@ -16,7 +16,7 @@ ClickUp or other read-only connectors.
 
 ## Current Phase
 
-HERMES EXECUTIVE REASONING ENGINE v1.
+HERMES EXECUTIVE PLANNING ENGINE v1.
 
 Current foundation capabilities:
 
@@ -25,10 +25,12 @@ Current foundation capabilities:
 - Executive Intelligence Engine v1 deterministic and request-scoped.
 - Executive Reasoning Engine v1 with explicit ReasoningPlan and ResponsePlan
   contracts.
+- Executive Planning Engine v1 with deterministic request-scoped candidate
+  plans and proposal-only state.
 
 Next approved milestone:
 
-`Hermes Executive Planning Engine v1`
+`Hermes Executive Approval Engine v1 Design`
 
 ## Production Architecture
 
@@ -75,9 +77,10 @@ Normal production reasoning turns follow:
 5. `ExecutiveContextCollectionService`
 6. `ExecutiveIntelligenceEngine` when enabled
 7. `ExecutiveReasoningEngine` when enabled
-8. `AIAgent.run_conversation`
-9. `ExecutiveOrchestrator.observe_response`
-10. existing gateway response delivery
+8. `ExecutivePlanningEngine` when an eligible planning ReasoningPlan exists
+9. `AIAgent.run_conversation`
+10. `ExecutiveOrchestrator.observe_response`
+11. existing gateway response delivery
 
 The gateway owns transport, auth, platform normalization, session persistence
 and outbound delivery. The Executive Orchestrator owns classification, bounded
@@ -95,6 +98,8 @@ post-response observation and trace metadata.
 - Executive Intelligence Engine v1 deterministic and request-scoped.
 - Executive Reasoning Engine v1 creates deterministic reasoning and response
   plans before the LLM call.
+- Executive Planning Engine v1 creates deterministic proposed candidate plans
+  for eligible planning turns.
 - Deterministic OVOS hook coexistence where existing gateway dispatch supports
   it.
 - Local Event Journal and Daily Brief data surfaces.
@@ -184,7 +189,12 @@ HERMES_EXECUTIVE_REASONING_ENGINE_ENABLED=true
 HERMES_REASONING_PLANNER_ENABLED=true
 HERMES_SKILL_SELECTION_ENABLED=true
 HERMES_AI_PROVIDER_SELECTION_ENABLED=true
-HERMES_PLANNING_ENGINE_ENABLED=false
+HERMES_PLANNING_ENGINE_ENABLED=true
+HERMES_PLANNING_REGISTRY_ENABLED=true
+HERMES_DETERMINISTIC_PLANNING_ENABLED=true
+HERMES_PLANNING_MODEL_ASSISTED_ENABLED=false
+HERMES_PLANNING_CANDIDATE_EVALUATION_ENABLED=true
+HERMES_PLANNING_PROPOSED_ACTION_GENERATION_ENABLED=true
 HERMES_EXECUTIVE_CONTEXT_MOCK_PROVIDER_ENABLED=false
 HERMES_MCP_CONTEXT_ADAPTER_ENABLED=false
 ```
@@ -223,6 +233,12 @@ The Executive Reasoning Engine may select skill labels and provider
 abstractions for the response plan, but `skill_execution=selected_not_executed`
 and `execution_permitted=false` remain mandatory.
 
+The Executive Planning Engine may create request-scoped candidate plans,
+transparent evaluations, approval requirements and descriptive
+`ProposedActionReference` records. Every v1 plan remains
+`plan_status=proposed`, `approval_status=not_requested` and
+`execution_status=not_executed`.
+
 ## Test Status
 
 Focused Orchestrator, readiness, deployment and trace-correlation tests pass in
@@ -253,6 +269,8 @@ git -C /opt/ai-stack/ovos-core rev-parse HEAD
 /opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main executive-orchestrator status
 /opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main reasoning status
 /opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main reasoning diagnostics
+/opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main planning status
+/opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main planning diagnostics
 /opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main executive-orchestrator diagnostic-turn "Hermes diagnostic: confirm orchestrator health."
 /opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main executive-orchestrator trace-lookup --approx-timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --window-seconds 900
 cd /opt/ai-stack/ovos-core && npx supabase migration list --linked

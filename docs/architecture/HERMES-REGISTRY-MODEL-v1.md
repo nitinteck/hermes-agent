@@ -8,6 +8,7 @@ Hermes uses domain-specific registries:
 
 - Executive Context Provider Registry
 - Intelligence Registry
+- Planning Registry
 - Connection Registry
 - Capability Registry
 - Integration Adapter Registry
@@ -16,6 +17,10 @@ Hermes uses domain-specific registries:
 The Intelligence Registry remains separate because intelligence modules consume
 canonical context and emit signals. They are not integrations, connectors,
 skills, adapters, prompts or actions.
+
+The Planning Registry remains separate because planning strategies consume an
+eligible `ReasoningPlan` and produce proposed candidate plans. They are not
+Skills, integrations, connectors, adapters or execution policies.
 
 Common conventions include IDs, versions, lifecycle state, health, deterministic
 status, risk and safe trace metadata.
@@ -51,3 +56,10 @@ External writes are not executable in v1. Future action flow must remain:
 
 Until that boundary exists and is explicitly authorised, write capabilities may
 be documented but must not be invoked.
+
+Planning flow remains:
+
+`Executive Orchestrator -> ReasoningPlan -> Planning Registry -> Planning Strategy -> Candidate Plans -> PlanningSnapshot`
+
+Planning registries cannot call `IntegrationService`, adapters, MCP, shell
+commands or subprocesses.

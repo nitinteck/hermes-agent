@@ -319,7 +319,13 @@ def is_ai_provider_selection_enabled() -> bool:
 
 
 def is_planning_engine_enabled() -> bool:
-    return is_truthy_value(os.getenv("HERMES_PLANNING_ENGINE_ENABLED"))
+    try:
+        from gateway.executive_planning import is_planning_engine_enabled as _enabled
+
+        return _enabled()
+    except Exception:
+        value = os.getenv("HERMES_PLANNING_ENGINE_ENABLED")
+        return True if value is None else is_truthy_value(value)
 
 
 def build_reasoning_status() -> dict[str, Any]:

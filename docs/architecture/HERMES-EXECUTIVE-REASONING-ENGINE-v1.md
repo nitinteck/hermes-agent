@@ -14,7 +14,7 @@ LLM sees the turn?
 
 Runtime flow:
 
-`Request Classification -> Executive Context -> Executive Intelligence -> Executive Reasoning Engine -> ResponsePlan -> Context Composer -> AIAgent`
+`Request Classification -> Executive Context -> Executive Intelligence -> Executive Reasoning Engine -> optional Executive Planning Engine -> ResponsePlan -> Context Composer -> AIAgent`
 
 The engine is deterministic and request-scoped. It does not call integrations,
 load credentials, execute skills, invoke MCP, call subprocesses, send messages,
@@ -148,7 +148,7 @@ HERMES_EXECUTIVE_REASONING_ENGINE_ENABLED=true
 HERMES_REASONING_PLANNER_ENABLED=true
 HERMES_SKILL_SELECTION_ENABLED=true
 HERMES_AI_PROVIDER_SELECTION_ENABLED=true
-HERMES_PLANNING_ENGINE_ENABLED=false
+HERMES_PLANNING_ENGINE_ENABLED=true
 ```
 
 Execution remains disabled:
@@ -161,9 +161,10 @@ HERMES_LIVE_EXECUTION_ENABLED=false
 
 Execution boundary: `not_executed`
 
-Planning Engine: disabled
+Planning Engine: enabled for eligible `planning_stub` turns only
 
 Live execution: disabled
 
 The engine cannot enable Calendar writes, Gmail, ClickUp, Slack, CRM, MCP
-execution, autonomous agents or external adapters.
+execution, autonomous agents or external adapters. Planning remains a separate
+proposal-only layer.

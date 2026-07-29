@@ -13095,7 +13095,7 @@ _BUILTIN_SUBCOMMANDS = frozenset(
         "computer-use",
         "config", "console", "cron", "curator", "dashboard", "serve", "debug", "deploy", "doctor",
         "dump", "fallback", "gateway", "hooks", "import", "insights", "integrations",
-        "intelligence", "reasoning", "eo", "executive-orchestrator",
+        "intelligence", "reasoning", "planning", "eo", "executive-orchestrator",
         "gui", "desktop", "kanban", "login", "logout", "logs", "lsp", "mcp", "memory", "migrate", "moa",
         "journey", "memory-graph", "learning",
         "model", "pairing", "pets", "plugins", "portal", "postinstall", "profile",
@@ -13707,6 +13707,11 @@ def main():
     )
 
     _register_reasoning_cli(subparsers)
+    from hermes_cli.executive_planning import (
+        register_cli as _register_planning_cli,
+    )
+
+    _register_planning_cli(subparsers)
 
     # =========================================================================
     # secrets command — external secret managers (Bitwarden, 1Password)
