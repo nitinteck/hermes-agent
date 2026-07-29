@@ -20,13 +20,15 @@ LLM decide which organisational context to retrieve.
 
 ## Decision
 
-Implement a direct, read-only Google Calendar provider inside the Executive
-Context Provider Framework.
+Implement a native, read-only Google Calendar integration behind the Hermes
+Integration and Connection Framework.
 
-The provider calls Google Calendar API `events.list` through a small injectable
-read client, normalises events into Hermes-owned
-`ExecutiveContextContribution` records, and exposes only safe summaries and
-digests to the Orchestrator trace.
+The provider asks `IntegrationService` for the `calendar.events.read`
+capability. `IntegrationService` validates tenant/user scope, connection state,
+credential availability, read-only capability metadata and adapter support
+before invoking `GoogleCalendarReadAdapter`. The provider then normalises events
+into Hermes-owned `ExecutiveContextContribution` records and exposes only safe
+summaries and digests to the Orchestrator trace.
 
 The provider is selected only for Calendar-shaped context requests and Daily
 Brief agenda requests. Potentially executable Calendar requests fail closed
@@ -36,6 +38,8 @@ before Calendar reads.
 
 - The LLM never invokes raw Google Calendar tools.
 - OAuth tokens and raw Calendar payloads remain outside prompts and traces.
+- Credential loading, auth headers and connection health belong to the
+  Integration Framework, not the Executive Context Provider.
 - The implementation can be tested with focused fakes.
 - Live reads can remain disabled until user authorisation is complete.
 - Writes remain architecturally absent; EDE/Safety Kernel execution state stays

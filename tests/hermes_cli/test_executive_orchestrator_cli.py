@@ -4,16 +4,20 @@ import json
 import time
 from typing import Any
 
+import pytest
+
 from gateway.executive_orchestrator import (
     ExecutiveOrchestrator,
     InMemoryExecutiveTraceSink,
     NoopExecutiveContextProvider,
 )
 from hermes_cli.executive_orchestrator import (
+    DiagnosticProviderConfigurationError,
     executive_orchestrator_status,
     lookup_executive_traces,
     run_local_behavioural_pack,
     run_local_diagnostic_turn,
+    validate_diagnostic_runtime_provider,
 )
 
 
@@ -148,6 +152,43 @@ def test_local_diagnostic_turn_can_explicitly_cover_disabled_mode(monkeypatch) -
     assert result["status"] == "disabled"
     assert result["enabled"] is False
     assert agent.calls
+
+
+def test_diagnostic_runtime_preflight_rejects_openrouter_without_credentials() -> None:
+    with pytest.raises(DiagnosticProviderConfigurationError) as exc:
+        validate_diagnostic_runtime_provider({
+            "provider": "openrouter",
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key": "",
+        })
+
+    assert exc.value.reason_code == "missing_credentials"
+    assert "openrouter" in exc.value.safe_payload()["provider"]
+    assert "api_key" not in json.dumps(exc.value.safe_payload()).casefold()
+
+
+def test_local_diagnostic_turn_isolates_provider_auth_failure(monkeypatch) -> None:
+    monkeypatch.setenv("HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED", "true")
+
+    def build_agent():
+        raise DiagnosticProviderConfigurationError(
+            provider="openrouter",
+            base_url="https://openrouter.ai/api/v1",
+            reason_code="missing_credentials",
+            safe_summary="OpenRouter API key is not configured.",
+        )
+
+    result = run_local_diagnostic_turn(
+        "Hermes, are you online?",
+        agent_factory=build_agent,
+    )
+
+    assert result["status"] == "invalid"
+    assert result["invalid_reason"] == "reasoning_provider_authentication_failed"
+    assert result["provider"] == "openrouter"
+    assert result["external_execution"] == "not_executed"
+    assert result["outbound_platform_delivery"] is False
+    assert result["no_execution_confirmed"] is True
 
 
 def test_behavioural_pack_fails_fast_when_orchestrator_disabled(monkeypatch) -> None:

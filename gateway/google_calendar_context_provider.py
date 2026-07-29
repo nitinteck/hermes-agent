@@ -14,7 +14,7 @@ import hashlib
 import json
 import os
 import re
-from typing import Any, Mapping, Protocol
+from typing import Any, Mapping
 from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -25,6 +25,22 @@ from gateway.executive_context_providers import (
     ExecutiveContextContribution,
     ExecutiveContextProviderMetadata,
     ExecutiveContextProviderRequest,
+)
+from gateway.integrations import (
+    ActorScope,
+    ConnectionDefinition,
+    ConnectionRegistry,
+    CredentialReference,
+    EnvironmentCredentialResolver,
+    IntegrationAdapterMetadata,
+    IntegrationAdapterRegistry,
+    IntegrationCapability,
+    IntegrationDefinition,
+    IntegrationRequest,
+    IntegrationService,
+    IntegrationState,
+    InMemoryCapabilityRegistry,
+    ResolvedCredential,
 )
 from utils import is_truthy_value
 
@@ -80,6 +96,10 @@ class GoogleCalendarProviderConfig:
     write_capability_enabled: bool = False
     token_file: str | None = None
     client_secret_file: str | None = None
+    connection_id: str = "google-calendar-primary"
+    tenant_id: str = "default"
+    user_id: str | None = None
+    environment: str = "production"
     calendar_id: str = "primary"
     default_timezone: str = "Europe/London"
     max_events: int = 25
@@ -107,6 +127,13 @@ class GoogleCalendarProviderConfig:
             token_file=os.getenv("HERMES_GOOGLE_CALENDAR_TOKEN_FILE") or None,
             client_secret_file=os.getenv("HERMES_GOOGLE_CALENDAR_CLIENT_SECRET_FILE")
             or None,
+            connection_id=os.getenv("HERMES_GOOGLE_CALENDAR_CONNECTION_ID")
+            or "google-calendar-primary",
+            tenant_id=os.getenv("HERMES_TENANT_ID") or "default",
+            user_id=os.getenv("HERMES_GOOGLE_CALENDAR_USER_ID")
+            or os.getenv("HERMES_USER_ID")
+            or None,
+            environment=os.getenv("HERMES_ENVIRONMENT") or "production",
             calendar_id=os.getenv("HERMES_GOOGLE_CALENDAR_ID") or "primary",
             default_timezone=os.getenv("HERMES_GOOGLE_CALENDAR_TIMEZONE")
             or "Europe/London",
@@ -141,40 +168,59 @@ def _bounded_int(value: str | None, *, default: int, low: int, high: int) -> int
     return min(high, max(low, parsed))
 
 
-class GoogleCalendarReadClient(Protocol):
-    def get_primary_calendar(self) -> Mapping[str, Any]: ...
+class GoogleCalendarReadAdapter:
+    """Read-only Google Calendar adapter used behind IntegrationService."""
 
-    def list_events(
-        self,
-        *,
-        calendar_id: str,
-        window: GoogleCalendarWindow,
-        max_results: int,
-    ) -> Mapping[str, Any]: ...
-
-
-class GoogleCalendarRestClient:
-    """Small REST client for read-only Calendar API calls."""
+    metadata = IntegrationAdapterMetadata(
+        adapter_id="calendar_google_rest",
+        integration_id="google_calendar",
+        version="1.0.0",
+        authentication_types=("oauth_bearer",),
+        supported_capability_ids=("calendar.events.read",),
+        uses_external_data=True,
+        deterministic=True,
+        timeout_seconds=5.0,
+        retry_max_attempts=1,
+        sensitivity="private",
+    )
 
     def __init__(self, *, config: GoogleCalendarProviderConfig) -> None:
         self.config = config
 
-    def get_primary_calendar(self) -> Mapping[str, Any]:
-        token = _load_access_token(self.config)
+    def execute_read(
+        self,
+        request: IntegrationRequest,
+        connection: ConnectionDefinition,
+        credential: ResolvedCredential,
+    ) -> Mapping[str, Any]:
+        calendar = self._get_primary_calendar(credential.value)
+        tz_name = str(calendar.get("timeZone") or self.config.default_timezone)
+        window = _window_from_parameters(request.parameters, default_timezone=tz_name)
+        events = self._list_events(
+            token=credential.value,
+            calendar_id=str(calendar.get("id") or self.config.calendar_id),
+            window=window,
+            max_results=int(
+                request.parameters.get("max_results") or self.config.max_events
+            ),
+        )
+        return {"calendar": calendar, "items": events.get("items", [])}
+
+    def _get_primary_calendar(self, token: str) -> Mapping[str, Any]:
         url = (
             "https://www.googleapis.com/calendar/v3/calendars/"
             f"{quote(self.config.calendar_id, safe='')}"
         )
         return self._get_json(url, token)
 
-    def list_events(
+    def _list_events(
         self,
         *,
+        token: str,
         calendar_id: str,
         window: GoogleCalendarWindow,
         max_results: int,
     ) -> Mapping[str, Any]:
-        token = _load_access_token(self.config)
         params = {
             "timeMin": window.start.isoformat(),
             "timeMax": window.end.isoformat(),
@@ -220,15 +266,100 @@ class GoogleCalendarRestClient:
         return payload if isinstance(payload, Mapping) else {}
 
 
-def _load_access_token(config: GoogleCalendarProviderConfig) -> str:
-    if not config.token_file:
-        raise RuntimeError("google_calendar_token_file_missing")
-    with open(config.token_file, encoding="utf-8") as fh:
-        payload = json.load(fh)
-    token = str(payload.get("access_token") or "").strip()
-    if not token:
-        raise RuntimeError("google_calendar_access_token_missing")
-    return token
+def _window_from_parameters(
+    parameters: Mapping[str, Any], *, default_timezone: str
+) -> GoogleCalendarWindow:
+    tz = _timezone(str(parameters.get("timezone") or default_timezone))
+    start_raw = str(parameters.get("window_start") or "")
+    end_raw = str(parameters.get("window_end") or "")
+    label = str(parameters.get("window_label") or "requested")
+    start = datetime.fromisoformat(start_raw.replace("Z", "+00:00")).astimezone(tz)
+    end = datetime.fromisoformat(end_raw.replace("Z", "+00:00")).astimezone(tz)
+    return GoogleCalendarWindow(start=start, end=end, label=label)
+
+
+def build_google_calendar_integration_service(
+    config: GoogleCalendarProviderConfig,
+) -> IntegrationService:
+    connections = ConnectionRegistry()
+    connections.register_integration(
+        IntegrationDefinition(
+            integration_id="google_calendar",
+            display_name="Google Calendar",
+            integration_type="native_api",
+            version="1.0.0",
+            environment=config.environment,
+        )
+    )
+    credential_ref = (
+        CredentialReference(
+            credential_ref_id=f"{config.connection_id}:credential",
+            integration_id="google_calendar",
+            tenant_id=config.tenant_id,
+            user_id=config.user_id,
+            environment=config.environment,
+            source="json_file_field",
+            key=config.token_file,
+            safe_metadata={"field": "access_token"},
+        )
+        if config.token_file
+        else None
+    )
+    connection_state = (
+        IntegrationState.CONNECTED
+        if config.live_reads_enabled
+        and config.token_file
+        and os.path.exists(config.token_file)
+        else IntegrationState.AUTHORISATION_REQUIRED
+    )
+    connections.register_connection(
+        ConnectionDefinition(
+            connection_id=config.connection_id,
+            integration_id="google_calendar",
+            owner_tenant_id=config.tenant_id,
+            owner_user_id=config.user_id,
+            connection_name="Google Calendar primary",
+            authentication_method="oauth_bearer",
+            scopes=(GOOGLE_CALENDAR_READONLY_SCOPE,),
+            status=connection_state,
+            enabled=config.provider_enabled,
+            created_at=_now_utc().isoformat(),
+            credential_ref=credential_ref,
+            capability_ids=("calendar.events.read",),
+            environment=config.environment,
+        )
+    )
+    capabilities = InMemoryCapabilityRegistry()
+    capabilities.register(
+        IntegrationCapability(
+            capability_id="calendar.events.read",
+            integration_id="google_calendar",
+            adapter_id=GoogleCalendarReadAdapter.metadata.adapter_id,
+            operation_name="events.list",
+            category="context_read",
+            read_write="read",
+            risk_class="low",
+            required_scopes=(GOOGLE_CALENDAR_READONLY_SCOPE,),
+            required_permissions=(),
+            required_approval_class="none",
+            input_schema_ref="google_calendar.events.read.v1",
+            output_schema_ref="google_calendar.events.v1",
+            tenant_scope="tenant",
+            user_scope="user",
+            enabled=config.provider_enabled and not config.write_capability_enabled,
+            environment=config.environment,
+            health_dependency="google_calendar",
+            lifecycle_state="active",
+        )
+    )
+    adapters = IntegrationAdapterRegistry()
+    adapters.register(GoogleCalendarReadAdapter(config=config))
+    return IntegrationService(
+        connection_registry=connections,
+        capability_registry=capabilities,
+        adapter_registry=adapters,
+        credential_resolver=EnvironmentCredentialResolver(),
+    )
 
 
 def google_calendar_capability_status(
@@ -279,10 +410,12 @@ class GoogleCalendarContextProvider:
         self,
         *,
         config: GoogleCalendarProviderConfig | None = None,
-        client: GoogleCalendarReadClient | None = None,
+        integration_service: IntegrationService | None = None,
+        connection_id: str | None = None,
     ) -> None:
         self.config = config or GoogleCalendarProviderConfig.from_environment()
-        self.client = client
+        self.integration_service = integration_service
+        self.connection_id = connection_id or self.config.connection_id
         self.metadata = ExecutiveContextProviderMetadata(
             provider_id=self.provider_id,
             version="1.0.0",
@@ -309,21 +442,55 @@ class GoogleCalendarContextProvider:
         request: ExecutiveContextProviderRequest,
     ) -> tuple[ExecutiveContextContribution, ...]:
         status = google_calendar_capability_status(self.config)
-        if status != "connected":
+        service = self.integration_service or build_google_calendar_integration_service(
+            self.config
+        )
+        if status != "connected" and self.integration_service is None:
             return (self._capability_status(request, status),)
         if self.config.write_capability_enabled:
             return (self._capability_status(request, "write_capability_forbidden"),)
 
-        client = self.client or GoogleCalendarRestClient(config=self.config)
-        calendar_meta = client.get_primary_calendar()
+        calendar_tz = _timezone(self.config.default_timezone)
+        window = self._window_for_request(request, calendar_tz)
+        result = service.execute_read(
+            IntegrationRequest(
+                capability_id="calendar.events.read",
+                connection_id=self.connection_id,
+                actor_scope=ActorScope(
+                    tenant_id=request.turn.tenant_id,
+                    user_id=request.turn.actor_id,
+                    environment=self.config.environment,
+                ),
+                parameters={
+                    "calendar_id": self.config.calendar_id,
+                    "window_start": window.start.isoformat(),
+                    "window_end": window.end.isoformat(),
+                    "window_label": window.label,
+                    "timezone": self.config.default_timezone,
+                    "max_results": self.config.max_events,
+                    "max_pages": self.config.max_pages,
+                },
+                trace_context={
+                    "provider_id": self.provider_id,
+                    "conversation_id": request.turn.conversation_id,
+                    "classification": request.request_classification,
+                },
+            )
+        )
+        if result.status != "ok":
+            error_status = (
+                result.error.code if result.error else "integration_unavailable"
+            )
+            return (self._capability_status(request, error_status),)
+        payload = result.data
+        calendar_meta_value = (
+            payload.get("calendar") if isinstance(payload, Mapping) else {}
+        )
+        calendar_meta = (
+            calendar_meta_value if isinstance(calendar_meta_value, Mapping) else {}
+        )
         calendar_tz = _timezone(
             str(calendar_meta.get("timeZone") or self.config.default_timezone)
-        )
-        window = self._window_for_request(request, calendar_tz)
-        payload = client.list_events(
-            calendar_id=str(calendar_meta.get("id") or self.config.calendar_id),
-            window=window,
-            max_results=self.config.max_events,
         )
         raw_items_value = payload.get("items") if isinstance(payload, Mapping) else []
         raw_items: list[Any] = (

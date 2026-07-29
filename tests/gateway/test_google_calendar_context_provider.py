@@ -9,10 +9,27 @@ from gateway.executive_context_providers import (
     ExecutiveContextProviderRegistry,
 )
 from gateway.google_calendar_context_provider import (
+    GOOGLE_CALENDAR_READONLY_SCOPE,
+    GoogleCalendarReadAdapter,
     GoogleCalendarContextProvider,
     GoogleCalendarProviderConfig,
     GoogleCalendarWindow,
     should_select_google_calendar_context,
+)
+from gateway.integrations import (
+    ActorScope,
+    ConnectionDefinition,
+    ConnectionRegistry,
+    CredentialReference,
+    EnvironmentCredentialResolver,
+    IntegrationAdapterRegistry,
+    IntegrationCapability,
+    IntegrationDefinition,
+    IntegrationRequest,
+    IntegrationService,
+    IntegrationState,
+    ResolvedCredential,
+    InMemoryCapabilityRegistry,
 )
 
 
@@ -30,24 +47,101 @@ def _turn(message: str) -> ExecutiveTurnInput:
     )
 
 
-class FakeCalendarClient:
+class FakeCalendarAdapter:
     def __init__(self, *, events: list[dict] | None = None) -> None:
         self.events = events or []
-        self.calls: list[dict] = []
+        self.calls: list[
+            tuple[IntegrationRequest, ConnectionDefinition, ResolvedCredential]
+        ] = []
+        self.metadata = GoogleCalendarReadAdapter(
+            config=GoogleCalendarProviderConfig(live_reads_enabled=True)
+        ).metadata
 
-    def get_primary_calendar(self) -> dict:
-        return {"id": "primary", "summary": "Nitin", "timeZone": "Europe/London"}
-
-    def list_events(
-        self, *, calendar_id: str, window: GoogleCalendarWindow, max_results: int
+    def execute_read(
+        self,
+        request: IntegrationRequest,
+        connection: ConnectionDefinition,
+        credential: ResolvedCredential,
     ) -> dict:
-        self.calls.append({
-            "calendar_id": calendar_id,
-            "time_min": window.start.isoformat(),
-            "time_max": window.end.isoformat(),
-            "max_results": max_results,
-        })
-        return {"items": self.events}
+        self.calls.append((request, connection, credential))
+        return {
+            "calendar": {
+                "id": "primary",
+                "summary": "Nitin",
+                "timeZone": "Europe/London",
+            },
+            "items": self.events,
+        }
+
+
+def _calendar_service(monkeypatch, adapter: FakeCalendarAdapter) -> IntegrationService:
+    monkeypatch.setenv("TEST_GOOGLE_CALENDAR_TOKEN", "secret-calendar-token")
+    connections = ConnectionRegistry()
+    connections.register_integration(
+        IntegrationDefinition(
+            integration_id="google_calendar",
+            display_name="Google Calendar",
+            integration_type="native_api",
+            version="1.0.0",
+            environment="test",
+        )
+    )
+    connections.register_connection(
+        ConnectionDefinition(
+            connection_id="conn-calendar",
+            integration_id="google_calendar",
+            owner_tenant_id="tenant-1",
+            owner_user_id="user-1",
+            connection_name="Default Calendar",
+            authentication_method="oauth_bearer",
+            scopes=(GOOGLE_CALENDAR_READONLY_SCOPE,),
+            status=IntegrationState.CONNECTED,
+            enabled=True,
+            created_at="2026-07-29T20:00:00Z",
+            credential_ref=CredentialReference(
+                credential_ref_id="cred-calendar",
+                integration_id="google_calendar",
+                tenant_id="tenant-1",
+                user_id="user-1",
+                environment="test",
+                source="env",
+                key="TEST_GOOGLE_CALENDAR_TOKEN",
+            ),
+            capability_ids=("calendar.events.read",),
+            environment="test",
+        )
+    )
+    capabilities = InMemoryCapabilityRegistry()
+    capabilities.register(
+        IntegrationCapability(
+            capability_id="calendar.events.read",
+            integration_id="google_calendar",
+            adapter_id=adapter.metadata.adapter_id,
+            operation_name="events.list",
+            category="context_read",
+            read_write="read",
+            risk_class="low",
+            required_scopes=(GOOGLE_CALENDAR_READONLY_SCOPE,),
+            required_permissions=(),
+            required_approval_class="none",
+            input_schema_ref="google_calendar.events.read.v1",
+            output_schema_ref="google_calendar.events.v1",
+            tenant_scope="tenant",
+            user_scope="user",
+            enabled=True,
+            environment="test",
+            health_dependency="google_calendar",
+            lifecycle_state="active",
+        )
+    )
+    adapters = IntegrationAdapterRegistry()
+    adapters.register(adapter)
+    return IntegrationService(
+        connection_registry=connections,
+        capability_registry=capabilities,
+        adapter_registry=adapters,
+        credential_resolver=EnvironmentCredentialResolver(),
+    )
 
 
 def test_disconnected_provider_returns_safe_capability_status_without_live_read(
@@ -118,10 +212,10 @@ def test_collection_service_selects_calendar_provider_only_when_needed() -> None
     assert "google_calendar_context" not in unrelated.selected_provider_ids
 
 
-def test_normalises_events_without_descriptions_attendee_emails_or_raw_google_payload() -> (
-    None
-):
-    client = FakeCalendarClient(
+def test_normalises_events_without_descriptions_attendee_emails_or_raw_google_payload(
+    monkeypatch,
+) -> None:
+    adapter = FakeCalendarAdapter(
         events=[
             {
                 "id": "evt-1",
@@ -168,10 +262,11 @@ def test_normalises_events_without_descriptions_attendee_emails_or_raw_google_pa
         config=GoogleCalendarProviderConfig(
             provider_enabled=True,
             live_reads_enabled=True,
-            credential_status_override="connected",
+            environment="test",
             now=lambda: datetime(2026, 7, 29, 8, 30, tzinfo=timezone.utc),
         ),
-        client=client,
+        integration_service=_calendar_service(monkeypatch, adapter),
+        connection_id="conn-calendar",
     )
 
     snapshot = _collection_with_provider(provider, "What meetings do I have today?")
@@ -189,8 +284,10 @@ def test_normalises_events_without_descriptions_attendee_emails_or_raw_google_pa
     assert "evt-1" not in rendered_trace
 
 
-def test_calendar_signals_include_next_meeting_gaps_conflicts_and_prep() -> None:
-    client = FakeCalendarClient(
+def test_calendar_signals_include_next_meeting_gaps_conflicts_and_prep(
+    monkeypatch,
+) -> None:
+    adapter = FakeCalendarAdapter(
         events=[
             {
                 "id": "evt-a",
@@ -222,10 +319,11 @@ def test_calendar_signals_include_next_meeting_gaps_conflicts_and_prep() -> None
         config=GoogleCalendarProviderConfig(
             provider_enabled=True,
             live_reads_enabled=True,
-            credential_status_override="connected",
+            environment="test",
             now=lambda: datetime(2026, 7, 29, 8, 0, tzinfo=timezone.utc),
         ),
-        client=client,
+        integration_service=_calendar_service(monkeypatch, adapter),
+        connection_id="conn-calendar",
     )
 
     snapshot = _collection_with_provider(
@@ -238,7 +336,31 @@ def test_calendar_signals_include_next_meeting_gaps_conflicts_and_prep() -> None
     assert "longest free block" in context
     assert "out-of-hours" in context
     assert "preparation" in context
-    assert client.calls[0]["max_results"] == 25
+    assert adapter.calls[0][0].parameters["max_results"] == 25
+    assert adapter.calls[0][2].value == "secret-calendar-token"
+
+
+def test_provider_uses_integration_service_and_does_not_own_credentials(
+    monkeypatch,
+) -> None:
+    adapter = FakeCalendarAdapter()
+    provider = GoogleCalendarContextProvider(
+        config=GoogleCalendarProviderConfig(
+            provider_enabled=True,
+            live_reads_enabled=True,
+            environment="test",
+            now=lambda: datetime(2026, 7, 29, 8, 0, tzinfo=timezone.utc),
+        ),
+        integration_service=_calendar_service(monkeypatch, adapter),
+        connection_id="conn-calendar",
+    )
+
+    snapshot = _collection_with_provider(provider, "What meetings do I have today?")
+    trace = json.dumps(snapshot.safe_trace_metadata()).casefold()
+
+    assert adapter.calls
+    assert "secret-calendar-token" not in trace
+    assert "execution_boundary=not_executed" in snapshot.composed_context
 
 
 def _request(message: str, provider: GoogleCalendarContextProvider):

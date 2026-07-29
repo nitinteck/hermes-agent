@@ -16,7 +16,11 @@ Hermes live execution.
 
 Path:
 
-`GatewayRunner._run_agent_inner -> run_reasoning_with_optional_orchestrator -> ExecutiveContextCollectionService -> GoogleCalendarContextProvider -> AIAgent.run_conversation`
+`GatewayRunner._run_agent_inner -> run_reasoning_with_optional_orchestrator -> ExecutiveContextCollectionService -> GoogleCalendarContextProvider -> IntegrationService -> ConnectionRegistry -> CredentialResolver -> GoogleCalendarReadAdapter -> Google Calendar API`
+
+The context provider decides whether Calendar context is useful and normalises
+the returned data. It does not own credentials, auth headers, token loading or
+connection health. Those are owned by the Integration and Connection Framework.
 
 The LLM receives Hermes-owned `ExecutiveContextContribution` summaries only.
 Raw Google API objects, OAuth tokens, refresh tokens, attendee email addresses,
@@ -33,6 +37,10 @@ HERMES_GOOGLE_CALENDAR_LIVE_READS_ENABLED=false
 HERMES_GOOGLE_CALENDAR_DESCRIPTIONS_ENABLED=false
 HERMES_GOOGLE_CALENDAR_TOKEN_FILE=
 HERMES_GOOGLE_CALENDAR_CLIENT_SECRET_FILE=
+HERMES_GOOGLE_CALENDAR_CONNECTION_ID=google-calendar-primary
+HERMES_TENANT_ID=default
+HERMES_GOOGLE_CALENDAR_USER_ID=
+HERMES_ENVIRONMENT=production
 HERMES_GOOGLE_CALENDAR_TIMEZONE=Europe/London
 HERMES_GOOGLE_CALENDAR_MAX_EVENTS=25
 HERMES_GOOGLE_CALENDAR_MAX_RANGE_DAYS=7
@@ -100,12 +108,14 @@ location or description detail.
 
 ```bash
 hermes executive-orchestrator status
+hermes integrations status
 hermes executive-orchestrator diagnostic-turn "What meetings do I have today? Answer only from data you actually have."
 ```
 
 Status output includes Calendar provider enabled state, live-read state,
 description-ingestion state, write-capability state and authorisation status.
-It does not include credential paths, tokens or event payloads.
+Integration status includes redacted integration, connection, capability and
+adapter state. Neither command includes tokens or event payloads.
 
 ## Current Deployment Mode
 

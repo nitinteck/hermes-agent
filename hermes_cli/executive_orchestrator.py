@@ -9,6 +9,92 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping
+from urllib.parse import urlparse
+
+
+class DiagnosticProviderConfigurationError(RuntimeError):
+    """Safe diagnostic-provider configuration failure."""
+
+    def __init__(
+        self,
+        *,
+        provider: str,
+        base_url: str,
+        reason_code: str,
+        safe_summary: str,
+    ) -> None:
+        super().__init__(safe_summary)
+        self.provider = provider
+        self.base_url = base_url
+        self.reason_code = reason_code
+        self.safe_summary = safe_summary
+
+    def safe_payload(self) -> dict[str, Any]:
+        return {
+            "provider": self.provider,
+            "base_url_host": _safe_base_url_host(self.base_url),
+            "reason_code": self.reason_code,
+            "safe_summary": self.safe_summary,
+        }
+
+
+def _safe_base_url_host(base_url: str) -> str:
+    try:
+        return urlparse(base_url).hostname or ""
+    except Exception:
+        return ""
+
+
+def validate_diagnostic_runtime_provider(runtime: Mapping[str, Any]) -> None:
+    provider = str(runtime.get("provider") or "").strip().casefold()
+    base_url = str(runtime.get("base_url") or "").strip()
+    host = _safe_base_url_host(base_url).casefold()
+    api_key = str(runtime.get("api_key") or "").strip()
+    credential_pool = runtime.get("credential_pool")
+    requires_key = provider in {
+        "openrouter",
+        "openai",
+        "anthropic",
+        "xai",
+        "qwen",
+    } or host in {
+        "openrouter.ai",
+        "api.openai.com",
+        "api.anthropic.com",
+        "api.x.ai",
+    }
+    if requires_key and not api_key and credential_pool is None:
+        raise DiagnosticProviderConfigurationError(
+            provider=provider or "unknown",
+            base_url=base_url,
+            reason_code="missing_credentials",
+            safe_summary=(
+                "Reasoning provider credentials are not configured for the "
+                "local diagnostic path."
+            ),
+        )
+
+
+def _diagnostic_provider_failure(
+    exc: DiagnosticProviderConfigurationError,
+    *,
+    enabled: bool,
+    effective_configuration: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "status": "invalid",
+        "enabled": enabled,
+        "invalid_reason": "reasoning_provider_authentication_failed",
+        "provider": exc.provider,
+        "model": "unknown",
+        "reasoning_provider": exc.safe_payload(),
+        "local_only": True,
+        "outbound_platform_delivery": False,
+        "external_execution": "not_executed",
+        "no_execution_confirmed": True,
+        "effective_configuration": dict(effective_configuration),
+        "warnings": ["diagnostic_not_run_reasoning_provider_authentication_failed"],
+    }
 
 
 def executive_orchestrator_status() -> dict[str, Any]:
@@ -93,7 +179,16 @@ def run_local_diagnostic_turn(
             "warnings": ["diagnostic_not_run_orchestrator_disabled"],
         }
     session_id = f"eo-diagnostic-{uuid.uuid4().hex[:12]}"
-    agent = agent_factory() if agent_factory is not None else _build_diagnostic_agent()
+    try:
+        agent = (
+            agent_factory() if agent_factory is not None else _build_diagnostic_agent()
+        )
+    except DiagnosticProviderConfigurationError as exc:
+        return _diagnostic_provider_failure(
+            exc,
+            enabled=enabled,
+            effective_configuration=effective_configuration,
+        )
     try:
         provider = str(getattr(agent, "provider", None) or "unknown")
         model = str(getattr(agent, "model", None) or "unknown")
@@ -190,7 +285,36 @@ def run_local_behavioural_pack(
 
     pack = _load_behavioural_pack(pack_path)
     session_id = f"eo-behavioural-{uuid.uuid4().hex[:12]}"
-    agent = agent_factory() if agent_factory is not None else _build_diagnostic_agent()
+    try:
+        agent = (
+            agent_factory() if agent_factory is not None else _build_diagnostic_agent()
+        )
+    except DiagnosticProviderConfigurationError as exc:
+        return {
+            "status": "invalid",
+            "invalid_reason": "reasoning_provider_authentication_failed",
+            "provider": exc.provider,
+            "model": "unknown",
+            "reasoning_provider": exc.safe_payload(),
+            "effective_configuration": effective_configuration,
+            "local_only": True,
+            "whatsapp_ingress_used": False,
+            "outbound_platform_delivery": False,
+            "external_execution": "not_executed",
+            "no_execution_confirmed": True,
+            "results": [],
+            "summary": {
+                "classification_correct": 0,
+                "classification_total": 0,
+                "classification_accuracy": 0.0,
+                "pass_total": 0,
+                "fail_total": 0,
+                "capability_honesty_pass": True,
+                "safety_pass": True,
+                "hallucination_count": 0,
+                "architecture_leakage_count": 0,
+            },
+        }
     active_orchestrator = orchestrator or get_default_executive_orchestrator()
     conversation_history: list[dict[str, str]] = []
     results: list[dict[str, Any]] = []
@@ -343,6 +467,7 @@ def _build_diagnostic_agent() -> Any:
         model = str(model_cfg.get("default") or model_cfg.get("model") or "")
         provider = str(model_cfg.get("provider") or "").strip() or None
     runtime = resolve_runtime_provider(requested=provider, target_model=model or None)
+    validate_diagnostic_runtime_provider(runtime)
     return AIAgent(
         api_key=runtime.get("api_key"),
         base_url=runtime.get("base_url"),

@@ -13094,7 +13094,7 @@ _BUILTIN_SUBCOMMANDS = frozenset(
         "acp", "auth", "backup", "bundles", "checkpoints", "claw", "completion",
         "computer-use",
         "config", "console", "cron", "curator", "dashboard", "serve", "debug", "deploy", "doctor",
-        "dump", "fallback", "gateway", "hooks", "import", "insights",
+        "dump", "fallback", "gateway", "hooks", "import", "insights", "integrations",
         "eo", "executive-orchestrator",
         "gui", "desktop", "kanban", "login", "logout", "logs", "lsp", "mcp", "memory", "migrate", "moa",
         "journey", "memory-graph", "learning",
@@ -13694,6 +13694,9 @@ def main():
     from hermes_cli.executive_orchestrator import register_cli as _register_eo_cli
 
     _register_eo_cli(subparsers)
+    from hermes_cli.integrations import register_cli as _register_integrations_cli
+
+    _register_integrations_cli(subparsers)
 
     # =========================================================================
     # secrets command — external secret managers (Bitwarden, 1Password)
