@@ -17,6 +17,8 @@ flowchart TD
   E --> F["Local Hermes, OVOS and authorised read-only providers"]
   E --> I["Executive Intelligence Engine"]
   I --> D
+  D --> R["Executive Reasoning Engine"]
+  R --> D
   D --> G["AIAgent reasoning provider"]
   G --> D
   D --> H["Gateway response delivery"]
@@ -51,6 +53,12 @@ The Executive Intelligence Engine owns deterministic derivation of facts,
 signals and transparent scores from canonical context snapshots. It cannot call
 integrations, MCP, credentials, LLMs or execution interfaces.
 
+The Executive Reasoning Engine owns explicit reasoning and response plans:
+objective extraction, evidence planning, missing-information handling,
+confidence labels, reasoning mode, selected skill labels, provider abstraction
+and response structure. It cannot call integrations, execute skills, load
+credentials, invoke MCP, call subprocesses or authorise execution.
+
 The reasoning provider remains the configured LLM implementation. It reasons
 over context selected by Hermes; it does not decide which organisational
 context to retrieve.
@@ -76,10 +84,11 @@ The gateway path is intentionally not redesigned.
    `HERMES_EXECUTIVE_ORCHESTRATOR_ENABLED=true`.
 6. `ExecutiveContextCollectionService` gathers bounded local context.
 7. `ExecutiveIntelligenceEngine` derives request-scoped signals when enabled.
-8. `ExecutiveOrchestrator.prepare_turn(...)` constructs the reasoning request.
-9. `AIAgent.run_conversation(...)` calls the configured provider/model.
-10. `ExecutiveOrchestrator.observe_response(...)` records safe trace metadata.
-11. The existing gateway delivery path returns the response.
+8. `ExecutiveReasoningEngine` creates a `ReasoningPlan` and `ResponsePlan`.
+9. `ExecutiveOrchestrator.prepare_turn(...)` constructs the reasoning request.
+10. `AIAgent.run_conversation(...)` calls the configured provider/model.
+11. `ExecutiveOrchestrator.observe_response(...)` records safe trace metadata.
+12. The existing gateway delivery path returns the response.
 
 ## Execution Boundary
 
@@ -100,10 +109,17 @@ possible until a future read-only connector milestone explicitly enables it.
 Tool access classification distinguishes read, write, and unknown schemas.
 Write or unknown access cannot be used for executive context collection.
 
-## Next Milestone
+## Current Milestone
 
 `Hermes Executive Reasoning Engine v1`
 
-That milestone adds explicit ReasoningPlan and ResponsePlan contracts above
-Executive Intelligence. It must not authorise Calendar reads, add external
+This milestone adds explicit `ReasoningPlan` and `ResponsePlan` contracts above
+Executive Intelligence. It does not authorise Calendar reads, add external
 writes or enable live execution.
+
+## Next Milestone
+
+`Hermes Executive Planning Engine v1`
+
+The Planning Engine remains disabled until that milestone is explicitly
+implemented and authorised.

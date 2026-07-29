@@ -54,6 +54,11 @@ def test_status_is_operator_safe_and_non_executing(monkeypatch) -> None:
     assert status["deterministic_intelligence_modules_enabled"] is True
     assert status["inference_intelligence_modules_enabled"] is False
     assert status["enabled_intelligence_module_count"] >= 7
+    assert status["executive_reasoning_engine_enabled"] is True
+    assert status["reasoning_planner_enabled"] is True
+    assert status["skill_selection_enabled"] is True
+    assert status["ai_provider_selection_enabled"] is True
+    assert status["planning_engine_enabled"] is False
     assert status["mock_executive_context_provider_enabled"] is False
     assert status["mcp_context_adapter_enabled"] is False
     assert status["execution_boundary"] == "not_executed"
@@ -284,6 +289,26 @@ def test_trace_lookup_returns_redacted_classification_and_safety_state(
                 "message_digest": "abc123456789",
                 "provider": "custom",
                 "model": "gpt-4.1-mini",
+                "reasoning_plan": {
+                    "plan_id": "rp_safe",
+                    "reasoning_mode": "question_answering",
+                    "selected_skills": [],
+                    "selected_provider": "standard_conversational_model",
+                    "confidence_by_claim": {"schedule_context": "unavailable"},
+                    "execution_required": False,
+                    "execution_permitted": False,
+                    "skill_execution": "selected_not_executed",
+                    "user_objective_digest": "safe",
+                },
+                "response_plan": {
+                    "plan_id": "response_rp_safe",
+                    "reasoning_mode": "question_answering",
+                    "selected_model": "standard_conversational_model",
+                    "expected_structure": ["answer", "evidence", "limitations"],
+                    "execution_required": False,
+                    "execution_permitted": False,
+                    "response_goal_digest": "safe",
+                },
                 "recorded_at": now,
                 "response_digest": "def987654321",
                 "safety_state": "normal_non_executing",
@@ -321,5 +346,10 @@ def test_trace_lookup_returns_redacted_classification_and_safety_state(
     assert match["safety_state"] == "normal_non_executing"
     assert match["execution_state"] == "not_executed"
     assert match["context_source_counts"] == {"daily_brief": 1, "journal": 2}
+    assert match["reasoning_plan"]["reasoning_mode"] == "question_answering"
+    assert match["reasoning_plan"]["execution_permitted"] is False
+    assert "user_objective_digest" not in match["reasoning_plan"]
+    assert match["response_plan"]["selected_model"] == "standard_conversational_model"
+    assert "response_goal_digest" not in match["response_plan"]
     assert "sk-should-not-appear" not in dumped
     assert "private_message" not in dumped
