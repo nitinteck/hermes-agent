@@ -114,12 +114,14 @@ class OrchestratorError(RuntimeError):
         safe_response: str | None = None,
         execution_state: str = "not_executed",
         correlation_id: str | None = None,
+        trace_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.classification = classification
         self.safe_response = safe_response
         self.execution_state = execution_state
         self.correlation_id = correlation_id
+        self.trace_id = trace_id
 
 
 class ExecutiveContextProvider(Protocol):
@@ -320,6 +322,7 @@ def run_reasoning_with_optional_orchestrator(
                 "executive_orchestrator": {
                     "classification": exc.classification,
                     "correlation_id": exc.correlation_id,
+                    "trace_id": exc.trace_id,
                     "execution_state": exc.execution_state,
                     "safe_response": True,
                     "no_execution_confirmed": True,
@@ -403,7 +406,7 @@ class ExecutiveOrchestrator:
         )
 
         if classification == "potentially_executable":
-            self._record_stage(
+            trace_id = self._record_stage(
                 correlation_id=correlation_id,
                 turn=turn,
                 classification=classification,
@@ -417,6 +420,7 @@ class ExecutiveOrchestrator:
                 classification=classification,
                 safe_response=EXECUTION_UNAVAILABLE_MESSAGE,
                 correlation_id=correlation_id,
+                trace_id=trace_id,
             )
 
         warnings: list[str] = []
@@ -594,8 +598,8 @@ class ExecutiveOrchestrator:
         context_digest: str,
         evidence_refs: tuple[str, ...],
         warnings: tuple[str, ...] = (),
-    ) -> None:
-        self.trace_sink.record({
+    ) -> str:
+        return self.trace_sink.record({
             "correlation_id": correlation_id,
             "tenant_id_digest": _digest(turn.tenant_id)[:16],
             "conversation_id_digest": _digest(turn.conversation_id)[:16],
