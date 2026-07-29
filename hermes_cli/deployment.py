@@ -524,11 +524,14 @@ class DeploymentPipeline:
             DeploymentStep(
                 "wait for healthy service",
                 remote_script=(
-                    f"set -eu; for i in $(seq 1 30); do "
+                    f"set -eu; healthy=0; for i in $(seq 1 30); do "
                     f"state=$(systemctl --user is-active {shlex.quote(config.service)} || true); "
-                    'test "$state" = active && exit 0; '
-                    "sleep 2; done; systemctl --user status "
+                    'if [ "$state" = active ]; then healthy=1; break; fi; '
+                    "sleep 2; done; "
+                    'if [ "$healthy" = 1 ]; then printf "service active\\n"; '
+                    "else systemctl --user status "
                     f"{shlex.quote(config.service)} --no-pager --lines=40; exit 1"
+                    "; fi"
                 ),
                 timeout=90,
             ),
