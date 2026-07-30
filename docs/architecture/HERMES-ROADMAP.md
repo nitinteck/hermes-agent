@@ -79,7 +79,7 @@ Multi-Assistant Product Foundation
 | RC1 WhatsApp Test | complete by precondition | owner validation completed before Slice 3 | owner-only WhatsApp behavior accepted |
 | RC1 Owner WhatsApp Validation | in progress | production runtime frozen at RC1; docs PR #26 may merge without deployment | owner structured testing complete and findings classified |
 | Business Knowledge Foundation | review-ready, frozen during RC1 validation | OVOS PR #14, Hermes PR #25 remain open and unmerged | reviewed, explicitly unfrozen, then migrated/deployed only after RC1 testing |
-| Donna Executive Conversation Engine | next candidate | not started | owner-test findings justify conversation-engine improvements before new external capabilities |
+| Donna Executive Conversation Engine | review-ready | Hermes PR pending from `codex/donna-executive-conversation-engine-v1`; no deployment | owner-test failures covered without enabling external capabilities |
 | Business Knowledge Population | planned | not started | curated proposed/verified facts loaded through import/review flow |
 | Hybrid Retrieval | planned | not started | relational-first retrieval with supplementary vector search |
 | Executive State | planned | not started | derived read model only, never primary authority |
@@ -118,7 +118,7 @@ Exit criteria:
 Business Knowledge Population must not begin until the foundation PRs are
 reviewed, explicitly unfrozen, and merged.
 
-## Next Candidate Milestone: Donna Executive Conversation Engine
+## Current Review Milestone: Donna Executive Conversation Engine
 
 Purpose:
 
@@ -148,6 +148,18 @@ Exit gate:
 - evidence, uncertainty and missing context are visible without exposing
   private internals;
 - prompt-injection and self-modification requests remain refused.
+
+Implementation documents:
+
+- `HERMES-CONVERSATION-ENGINE-v1.md`;
+- `HERMES-CONVERSATION-WORKING-SET-v1.md`;
+- `HERMES-EXECUTION-TRUTHFULNESS-BOUNDARY-v1.md`;
+- `HERMES-EVIDENCE-LED-RESPONSE-CONTRACT-v1.md`;
+- `../testing/HERMES-DONNA-CONVERSATION-ACCEPTANCE-PACK-v1.md`;
+- `../operations/HERMES-CONVERSATION-DIAGNOSTICS-v1.md`.
+
+Business Knowledge Foundation remains review-ready but frozen pending owner
+test findings and explicit approval.
 
 ## Later Milestone: Business Knowledge Population
 
