@@ -71,7 +71,8 @@ Autonomous Executive Assistant
 | RC1 Merge | complete | OVOS PR #13 and Hermes PRs #21/#22/#23/#24 merged | clean main branches |
 | RC1 Deploy | complete | production VPS deployed from Hermes `3888f8d40` and OVOS `aca0d4c3` | gateway active, Supabase migrated |
 | RC1 WhatsApp Test | complete by precondition | owner validation completed before Slice 3 | owner-only WhatsApp behavior accepted |
-| Business Knowledge Foundation | in review | OVOS PR #14, Hermes PR #25 | canonical relational model, repository boundary, no execution |
+| RC1 Owner WhatsApp Validation | in progress | production runtime frozen at RC1; docs PR #26 may merge without deployment | owner structured testing complete and findings classified |
+| Business Knowledge Foundation | frozen during RC1 validation | OVOS PR #14, Hermes PR #25 remain open and unmerged | canonical relational model reviewed, not migrated or deployed |
 | Business Knowledge Population | next | not started | curated proposed/verified facts loaded through import/review flow |
 | Hybrid Retrieval | planned | not started | relational-first retrieval with supplementary vector search |
 | Executive State | planned | not started | derived read model only, never primary authority |
@@ -85,13 +86,29 @@ Autonomous Executive Assistant
 
 ## Current Focus
 
-Business Knowledge Foundation is the active review milestone. It establishes
-canonical Business Knowledge tables, lifecycle, evidence, provenance,
-sensitivity, disclosure policy, review, import dry-run behavior, and Hermes
-repository consumption.
+RC1 Owner WhatsApp Validation is the active milestone. Runtime feature
+development is frozen while the owner performs structured real-world WhatsApp
+testing.
+
+Frozen review PRs:
+
+- OVOS PR #14: Business Knowledge Foundation database layer;
+- Hermes PR #25: Business Knowledge repositories and Executive Context
+  integration.
+
+These PRs are review-ready but not approved for production during RC1 owner
+validation. Do not apply the Business Knowledge migration, deploy Business
+Knowledge, or merge the Business Knowledge milestone during this freeze.
+
+Exit criteria:
+
+- owner completes structured WhatsApp testing;
+- behavioural findings are classified;
+- release blockers are separated from product improvements;
+- next milestone is selected from evidence rather than assumption.
 
 Business Knowledge Population must not begin until the foundation PRs are
-reviewed and merged.
+reviewed, explicitly unfrozen, and merged.
 
 ## Next Milestone: Business Knowledge Population
 
