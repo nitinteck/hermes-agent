@@ -28,6 +28,10 @@ clarifies an architectural decision. Link detailed ADRs where they exist.
 | HDL-0013 | 2026-07-30 | YAML, JSON, and CSV are import-only surfaces. | accepted | They may create dry-run candidates but are never runtime authority. |
 | HDL-0014 | 2026-07-30 | Every future milestone updates roadmap, constitution, decision log, and technical debt register. | accepted | Documentation maintenance is part of milestone completion, not after-the-fact cleanup. |
 | HDL-0015 | 2026-07-30 | RC1 runtime feature development is frozen during owner WhatsApp validation. | accepted | OVOS PR #14 and Hermes PR #25 remain open/unmerged; no Business Knowledge migration, deployment, connectors, approvals, or execution during RC1 testing. |
+| HDL-0016 | 2026-07-30 | Hermes is the platform; Donna is the internal executive assistant instance. | accepted | Customer-facing assistants must not share Donna's identity, confidential context or internal permissions by default. |
+| HDL-0017 | 2026-07-30 | Licensed assistant architecture separates tenant, subscription, assistant licence, assistant instance, endpoint and conversation. | accepted | WhatsApp numbers are licensed endpoints, not permanent assistant identities or tenant boundaries. |
+| HDL-0018 | 2026-07-30 | Public assistants require disclosure, participant identity and assistant-instance isolation before launch. | accepted | Parent Assistant remains future work and cannot go live from RC1 or frozen Business Knowledge PRs alone. |
+| HDL-0019 | 2026-07-30 | The next candidate post-RC1 milestone is Donna Executive Conversation Engine. | accepted | Improve planning intent, working set, evidence-led answers, truthfulness and refusal quality without external capabilities. |
 
 ## Pending Decisions
 
@@ -39,6 +43,8 @@ clarifies an architectural decision. Link detailed ADRs where they exist.
 | HDL-P004 | Read-only connector order and data minimisation. | Calendar/ClickUp/Gmail | Calendar is currently roadmapped before ClickUp and Gmail. |
 | HDL-P005 | Approval record semantics. | Approvals | User requests are not approvals; approval records need explicit actor, scope, expiry, and replay protections. |
 | HDL-P006 | Execution receipt and rollback semantics. | Execution | Execution must be separately authorised, idempotent, auditable, and unable to fabricate receipts. |
+| HDL-P007 | Subscription and licence persistence shape. | Multi-Assistant Product Foundation | Product model is documented only; implementation must reuse existing tenant/auth patterns. |
+| HDL-P008 | Public assistant escalation workflow. | Multi-Assistant Product Foundation | Parent Assistant needs safe handoff without exposing internal executive context. |
 
 ## Reversal Rule
 
