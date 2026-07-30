@@ -409,6 +409,7 @@ class SupabaseExecutiveContextRepository:
         self._timeout_seconds = timeout_seconds
         self.governance_repository = governance_repository
         self._request_cache: dict[str, tuple[Mapping[str, Any], ...]] = {}
+        self._load_warnings: list[str] = []
 
     @classmethod
     def from_environment(
@@ -468,6 +469,7 @@ class SupabaseExecutiveContextRepository:
         environment: str | None = None,
     ) -> ExecutiveContext:
         self._request_cache = {}
+        self._load_warnings = []
         records: list[ExecutiveContextRecord] = []
         warnings: list[str] = []
         try:
@@ -480,6 +482,7 @@ class SupabaseExecutiveContextRepository:
             raise
         except Exception as exc:
             raise ExecutiveContextRepositoryError("EDP context query failed") from exc
+        warnings.extend(self._load_warnings)
         try:
             records.extend(self._load_governance_records(tenant_context, environment))
         except Exception:
@@ -498,16 +501,14 @@ class SupabaseExecutiveContextRepository:
     def _load_identity_records(
         self, tenant_context: TenantContext, limits: Any
     ) -> list[ExecutiveContextRecord]:
-        rows = self._table_rows(
-            "executive_identities",
+        rows = self._rpc_rows(
+            "ovos_list_executive_identities",
             {
-                "tenant_id": tenant_context.tenant_id,
-                "owner_user_id": tenant_context.actor_user_id,
-                "status": "active",
+                "p_tenant_id": tenant_context.tenant_id,
+                "p_owner_user_id": tenant_context.actor_user_id,
+                "p_active_only": True,
             },
-            limit=min(2, _limit(limits, "max_brief_items", 5)),
-            order="updated_at.desc",
-        )
+        )[: min(2, _limit(limits, "max_brief_items", 5))]
         return [
             _record(
                 category="identity",
@@ -539,16 +540,15 @@ class SupabaseExecutiveContextRepository:
         self, tenant_context: TenantContext, limits: Any
     ) -> list[ExecutiveContextRecord]:
         records: list[ExecutiveContextRecord] = []
-        for row in self._table_rows(
-            "organisation_contexts",
+        for row in self._rpc_rows(
+            "ovos_search_organisation_contexts",
             {
-                "tenant_id": tenant_context.tenant_id,
-                "owner_user_id": tenant_context.actor_user_id,
-                "status": "active",
+                "p_tenant_id": tenant_context.tenant_id,
+                "p_owner_user_id": tenant_context.actor_user_id,
+                "p_query": None,
+                "p_active_only": True,
             },
-            limit=_limit(limits, "max_brief_items", 5),
-            order="updated_at.desc",
-        ):
+        )[: _limit(limits, "max_brief_items", 5)]:
             records.append(
                 _record(
                     category="organisation",
@@ -573,16 +573,24 @@ class SupabaseExecutiveContextRepository:
             ("team_members", "canonical_name", "max_decisions"),
             ("responsibility_assignments", "subject", "max_decisions"),
         ):
-            for row in self._table_rows(
-                table,
+            rpc_name = (
+                "ovos_search_team_members"
+                if table == "team_members"
+                else "ovos_search_responsibility_assignments"
+            )
+            query_key = (
+                "p_query" if table == "team_members" else "p_subject_text"
+            )
+            rows = self._rpc_rows(
+                rpc_name,
                 {
-                    "tenant_id": tenant_context.tenant_id,
-                    "owner_user_id": tenant_context.actor_user_id,
-                    "status": "active",
+                    "p_tenant_id": tenant_context.tenant_id,
+                    "p_owner_user_id": tenant_context.actor_user_id,
+                    query_key: None,
+                    "p_active_only": True,
                 },
-                limit=_limit(limits, max_attr, 5),
-                order="updated_at.desc",
-            ):
+            )[: _limit(limits, max_attr, 5)]
+            for row in rows:
                 records.append(
                     _record(
                         category="organisation",
@@ -601,6 +609,53 @@ class SupabaseExecutiveContextRepository:
                     )
                 )
         return records
+
+    def _rpc_rows(
+        self,
+        name: str,
+        payload: Mapping[str, Any],
+    ) -> tuple[Mapping[str, Any], ...]:
+        cache_key = json.dumps(
+            {"rpc": name, "payload": dict(payload)},
+            sort_keys=True,
+        )
+        if cache_key in self._request_cache:
+            return self._request_cache[cache_key]
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.supabase_url}/rest/v1/rpc/{name}",
+            data=body,
+            headers={
+                "apikey": self._api_key,
+                "Authorization": f"Bearer {self._bearer_token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "hermes-agent-executive-context-repository/1",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(
+                request, timeout=self._timeout_seconds
+            ) as response:
+                raw = response.read()
+        except (OSError, TimeoutError, urllib.error.URLError) as exc:
+            raise ExecutiveContextRepositoryError(
+                f"Executive Context RPC {name} unavailable"
+            ) from exc
+        try:
+            parsed = json.loads(raw.decode("utf-8")) if raw else []
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ExecutiveContextRepositoryError(
+                f"Executive Context RPC {name} returned invalid JSON"
+            ) from exc
+        if not isinstance(parsed, list):
+            raise ExecutiveContextRepositoryError(
+                f"Executive Context RPC {name} returned invalid shape"
+            )
+        rows = tuple(row for row in parsed if isinstance(row, Mapping))
+        self._request_cache[cache_key] = rows
+        return rows
 
     def _load_strategic_records(
         self, tenant_context: TenantContext, limits: Any
@@ -781,6 +836,14 @@ class SupabaseExecutiveContextRepository:
                 request, timeout=self._timeout_seconds
             ) as response:
                 raw = response.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code == 406:
+                self._load_warnings.append(f"postgrest_schema_unavailable:{table}")
+                self._request_cache[cache_key] = ()
+                return ()
+            raise ExecutiveContextRepositoryError(
+                f"Executive Context table {table} unavailable"
+            ) from exc
         except (OSError, TimeoutError, urllib.error.URLError) as exc:
             raise ExecutiveContextRepositoryError(
                 f"Executive Context table {table} unavailable"
