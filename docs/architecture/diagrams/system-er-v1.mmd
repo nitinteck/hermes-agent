@@ -1,0 +1,79 @@
+erDiagram
+  storage_buckets {
+    text id PK
+    text name
+    uuid owner
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+    boolean public
+    boolean avif_autodetection
+    bigint file_size_limit
+  }
+  storage_buckets_vectors {
+    text id
+    user_defined type
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+  }
+  storage_objects {
+    uuid id PK
+    text bucket_id
+    text name
+    uuid owner
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+    timestamp_with_time_zone last_accessed_at
+    jsonb metadata
+  }
+  storage_s3_multipart_uploads {
+    text id PK
+    bigint in_progress_size
+    text upload_signature
+    text bucket_id
+    text key
+    text version
+    text owner_id
+    timestamp_with_time_zone created_at
+  }
+  storage_s3_multipart_uploads_parts {
+    uuid id PK
+    text upload_id
+    bigint size
+    integer part_number
+    text bucket_id
+    text key
+    text etag
+    text owner_id
+  }
+  storage_vector_indexes {
+    text id
+    text name
+    text bucket_id
+    text data_type
+    integer dimension
+    text distance_metric
+    jsonb metadata_configuration
+    timestamp_with_time_zone created_at
+  }
+  supabase_functions_hooks {
+    bigint id PK
+    integer hook_table_id
+    text hook_name
+    timestamp_with_time_zone created_at
+    bigint request_id
+  }
+  supabase_migrations_schema_migrations {
+    text version PK
+    ARRAY statements
+    text name
+  }
+  vault_secrets {
+    uuid id PK
+    text name
+    text description
+    text secret
+    uuid key_id
+    bytea nonce
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+  }

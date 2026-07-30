@@ -1,0 +1,59 @@
+erDiagram
+  net__http_response {
+    bigint id
+    integer status_code
+    text content_type
+    jsonb headers
+    text content
+    boolean timed_out
+    text error_msg
+    timestamp_with_time_zone created
+  }
+  net_http_request_queue {
+    bigint id
+    text method
+    text url
+    jsonb headers
+    bytea body
+    integer timeout_milliseconds
+  }
+  ovos_processing_events {
+    uuid id PK
+    uuid knowledge_object_id
+    uuid tenant_id
+    uuid owner_user_id
+    text visibility
+    uuid created_by
+    text event_type
+    text status
+  }
+  ovos_workflow_feedback {
+    uuid id PK
+    uuid tenant_id
+    uuid owner_user_id
+    text workflow_id
+    text scenario_id
+    text interaction_id
+    text rating
+    text reason_code
+  }
+  realtime_messages {
+    text topic
+    text extension
+    jsonb payload
+    text event
+    boolean private
+    timestamp_without_time_zone updated_at
+    timestamp_without_time_zone inserted_at PK
+    uuid id PK
+  }
+  realtime_subscription {
+    bigint id PK
+    uuid subscription_id
+    regclass entity
+    ARRAY filters
+    jsonb claims
+    regrole claims_role
+    timestamp_without_time_zone created_at
+    text action_filter
+  }
