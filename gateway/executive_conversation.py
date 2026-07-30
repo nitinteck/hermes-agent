@@ -1468,11 +1468,19 @@ _COMPLETION_CLAIM_PATTERNS = (
         re.I,
     ),
     re.compile(
+        r"\bi\s+(went ahead and|already|just)\s+(sent|created|booked|scheduled|updated|notified|uploaded|completed|executed)\b",
+        re.I,
+    ),
+    re.compile(
         r"\b(email|message|task|calendar invite|event|meeting|booking|payment|record)\s+(sent|created|booked|scheduled|updated|notified|uploaded|completed|done)\b",
         re.I,
     ),
     re.compile(
         r"\b(email|message|task|calendar invite|event|meeting|booking|payment|record|customer|human escalation)\b.{0,50}\b(has been|was|is now)\s+(sent|created|booked|scheduled|updated|notified|uploaded|completed|marked|done|delivered)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(it|(the\s+)?(email|message|task|calendar invite|event|meeting|booking|payment|record))\s+(has been|was|is|is now)\s+(sent|created|booked|scheduled|updated|notified|uploaded|completed|marked|done|delivered|confirmed|added)\b",
         re.I,
     ),
     re.compile(r"\b(the\s+)?task\s+has\s+been\s+created\b", re.I),

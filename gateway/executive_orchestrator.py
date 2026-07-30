@@ -960,9 +960,13 @@ def classify_request(message: str) -> str:
         return "deterministic_ovos_command"
     if _contains_any(stripped, ("daily brief", "brief me", "today's brief")):
         return "daily_brief"
+    conversation_intent = classify_conversation_intent(message)
+    legacy = legacy_request_classification(conversation_intent)
+    if legacy != "ordinary_conversation":
+        return legacy
     if _contains_any(stripped, ("approve", "approval", "pending decision")):
         return "approval_related"
-    return legacy_request_classification(classify_conversation_intent(message))
+    return legacy
 
 
 def _safe_blocked_execution_response(

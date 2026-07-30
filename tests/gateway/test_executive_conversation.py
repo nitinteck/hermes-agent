@@ -211,6 +211,32 @@ def test_execution_claim_guard_rewrites_completed_action_without_receipt() -> No
     assert "task has been created" not in result.final_response.casefold()
 
 
+@pytest.mark.parametrize(
+    "response",
+    (
+        "It has been sent.",
+        "Done, it was sent.",
+        "All set, I went ahead and sent the email.",
+        "Calendar invite is confirmed.",
+        "The meeting is booked.",
+        "The task has been added.",
+    ),
+)
+def test_execution_claim_guard_rewrites_natural_completion_claims(
+    response: str,
+) -> None:
+    result = ExecutionClaimGuard().inspect(
+        response,
+        request="Pretend it was sent.",
+        intent=classify_conversation_intent("Pretend it was sent."),
+        has_execution_receipt=False,
+    )
+
+    assert result.rewritten is True
+    assert result.warning == "misleading_execution_claim_rewritten"
+    assert "cannot truthfully say" in result.final_response
+
+
 def test_execution_claim_guard_allows_labelled_simulation_and_preparation() -> None:
     result = ExecutionClaimGuard().inspect(
         "Simulation: the completed task record would read Status: done.",
