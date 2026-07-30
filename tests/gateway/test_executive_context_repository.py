@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
 import json
-from urllib.parse import parse_qs, urlparse
+import urllib.error
+from urllib.parse import urlparse
 
 import pytest
 
@@ -253,7 +254,7 @@ def test_repository_unavailable_exception_is_not_silently_successful() -> None:
         )
 
 
-def test_supabase_repository_uses_ovos_schema_and_tenant_filters(
+def test_supabase_repository_uses_public_rpc_and_tenant_filters(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured_requests = []
@@ -294,9 +295,47 @@ def test_supabase_repository_uses_ovos_schema_and_tenant_filters(
 
     assert captured_requests
     first = captured_requests[0]
-    assert first.headers["Accept-profile"] == "ovos"
+    assert first.get_method() == "POST"
     parsed = urlparse(first.full_url)
-    assert parsed.path == "/rest/v1/executive_identities"
-    query = parse_qs(parsed.query)
-    assert query["tenant_id"] == [f"eq.{TENANT_ID}"]
-    assert query["owner_user_id"] == [f"eq.{ACTOR_ID}"]
+    assert parsed.path == "/rest/v1/rpc/ovos_list_executive_identities"
+    payload = json.loads(first.data.decode("utf-8"))
+    assert payload["p_tenant_id"] == TENANT_ID
+    assert payload["p_owner_user_id"] == ACTOR_ID
+    assert payload["p_active_only"] is True
+
+
+def test_supabase_repository_treats_private_schema_rest_406_as_empty_section(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _urlopen(request, timeout):  # noqa: ANN001
+        del timeout
+        raise urllib.error.HTTPError(
+            request.full_url,
+            406,
+            "Not Acceptable",
+            hdrs=None,
+            fp=None,
+        )
+
+    monkeypatch.setattr(
+        "gateway.executive_context_repository.urllib.request.urlopen",
+        _urlopen,
+    )
+    repository = SupabaseExecutiveContextRepository(
+        supabase_url="https://example.supabase.co",
+        api_key="anon-key",
+        bearer_token="user-token",
+        governance_repository=InMemoryGovernanceRepository(),
+    )
+
+    rows = repository._table_rows(  # noqa: SLF001
+        "ede_executive_plans",
+        {"tenant_id": TENANT_ID},
+        limit=1,
+        order="created_at.desc",
+    )
+
+    assert rows == ()
+    assert repository._load_warnings == [  # noqa: SLF001
+        "postgrest_schema_unavailable:ede_executive_plans"
+    ]
