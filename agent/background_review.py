@@ -625,6 +625,13 @@ def _run_review_in_thread(
     review prompt, and surfaces a compact action summary back to the user
     via ``agent._safe_print`` and ``agent.background_review_callback``.
     """
+    if getattr(agent, "self_improvement_direct_mutation_enabled", True) is not True:
+        logger.info(
+            "Background memory/skill review skipped: direct self-improvement "
+            "mutation is disabled."
+        )
+        return
+
     # Local import to avoid a hard circular dep at module load.
     from run_agent import AIAgent
     from tools.terminal_tool import set_approval_callback as _set_approval_callback
