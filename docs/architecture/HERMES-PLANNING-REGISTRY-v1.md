@@ -1,6 +1,6 @@
 # Hermes Planning Registry v1
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 
 The Planning Registry is separate from Context, Intelligence, Integration,
 Adapter and Skill registries.
@@ -19,6 +19,22 @@ It records:
 - external-call support
 - health
 - risk
+- tenant scope
+- user scope
+
+The registry supports:
+
+- `register`
+- `lookup`
+- `strategy_ids`
+- `enabled_strategies`
+- `enable`
+- `disable`
+- deterministic-only `select`
+
+Registration rejects strategies that claim execution or external-call support.
+Lookup fails closed for unknown, disabled, unavailable or unhealthy strategies.
+Selection validates tenant and user scope before returning a strategy.
 
 Current strategies:
 

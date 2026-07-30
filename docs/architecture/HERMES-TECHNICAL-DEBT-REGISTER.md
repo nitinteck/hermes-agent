@@ -31,6 +31,8 @@ Debt is acceptable when named, owned, bounded, and sequenced.
 | HTD-0008 | Approvals | Approval engine is future work. | open | Approvals | EDP | User request text must not be interpreted as approval. |
 | HTD-0009 | Execution | Execution boundary is future work. | open | Execution | EDP | Requires explicit authorisation, receipts, idempotency, audit, and rollback semantics. |
 | HTD-0010 | Documentation | Older milestone docs may describe now-superseded sequencing. | open | Continuous | Hermes | Living docs here are canonical when conflicts arise. |
+| HTD-0011 | Planning | Planning Engine v1 is request-scoped and does not durably persist full plan bodies. | open | Approval Engine / Planning Lifecycle | Hermes | Keep full plans request-scoped until approval semantics and retention rules exist; traces may store safe digests and counts only. |
+| HTD-0012 | Planning | Model-assisted planning remains disabled. | open | Post-v1 Planning | Hermes | Deterministic envelope is required first; any model-assisted drafting must pass schema, evidence, lifecycle and safety validation. |
 
 ## Debt Acceptance Criteria
 

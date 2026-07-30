@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 import os
 import re
 import time
-from typing import Any
+from typing import Any, cast
 
 PROPOSED = "proposed"
 NOT_REQUESTED = "not_requested"
@@ -30,6 +31,11 @@ PLANNING_LIMITATION = (
 class PlanObjective:
     objective_id: str
     summary: str
+    desired_outcome: str = ""
+    completion_definition: str = ""
+    time_horizon: str | None = None
+    scope: str = "request_scoped"
+    excluded_scope: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
 
     def safe_trace(self) -> dict[str, Any]:
@@ -45,6 +51,7 @@ class PlanConstraint:
     constraint_id: str
     summary: str
     mandatory: bool = True
+    constraint_type: str = "safety"
     evidence_refs: tuple[str, ...] = ()
 
 
@@ -62,6 +69,8 @@ class PlanWorkstream:
     title: str
     objective: str
     sequence: int
+    owner_requirement_ids: tuple[str, ...] = ()
+    success_measure_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -70,12 +79,17 @@ class PlanMilestone:
     title: str
     success_measure_ids: tuple[str, ...] = ()
     sequence: int = 1
+    completion_condition: str = "Observable completion evidence is available."
+    target_date: str | None = None
+    evidence_refs: tuple[str, ...] = ()
     status: str = PROPOSED
     execution_status: str = NOT_EXECUTED
 
     def __post_init__(self) -> None:
         _require_value("status", self.status, {PROPOSED})
         _require_value("execution_status", self.execution_status, {NOT_EXECUTED})
+        if not self.completion_condition.strip():
+            raise ValueError("milestone completion_condition is required")
 
 
 @dataclass(frozen=True)
@@ -86,12 +100,28 @@ class PlanStep:
     workstream_id: str | None = None
     milestone_id: str | None = None
     description: str = ""
+    step_type: str = "planning"
+    prerequisites: tuple[str, ...] = ()
+    dependencies: tuple[str, ...] = ()
+    expected_output: str = "Proposal artefact or decision-ready evidence."
+    success_condition: str = "The proposed step output is ready for human review."
+    owner_requirement: str | None = None
     owner_requirement_ids: tuple[str, ...] = ()
     resource_requirement_ids: tuple[str, ...] = ()
     dependency_ids: tuple[str, ...] = ()
+    estimated_effort: str | None = None
+    estimated_duration: str | None = None
+    earliest_start: str | None = None
+    target_date: str | None = None
+    criticality: str = "medium"
+    reversibility: str = "reversible"
+    approval_requirement: str | None = None
     approval_requirement_ids: tuple[str, ...] = ()
     proposed_action_reference_ids: tuple[str, ...] = ()
+    capability_requirements: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
+    risks: tuple[str, ...] = ()
     status: str = PROPOSED
     execution_status: str = NOT_EXECUTED
 
@@ -122,6 +152,8 @@ class PlanDependency:
     predecessor_id: str
     successor_id: str
     dependency_type: str = "finish_before_start"
+    description: str = ""
+    evidence_refs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -129,6 +161,9 @@ class PlanDecisionPoint:
     decision_point_id: str
     title: str
     required_before_step_id: str | None = None
+    evidence_required: tuple[str, ...] = ()
+    approval_requirement_id: str | None = None
+    risk_class: str = "medium"
     status: str = "open"
 
 
@@ -137,6 +172,10 @@ class PlanRisk:
     risk_id: str
     summary: str
     severity: str = "medium"
+    likelihood: str = "unknown"
+    impact: str = "unknown"
+    mitigation_ids: tuple[str, ...] = ()
+    status: str = "open"
     evidence_refs: tuple[str, ...] = ()
 
 
@@ -145,6 +184,8 @@ class PlanMitigation:
     mitigation_id: str
     risk_id: str
     summary: str
+    owner_requirement_id: str | None = None
+    expected_effect: str = "reduce_likelihood_or_impact"
 
 
 @dataclass(frozen=True)
@@ -152,18 +193,26 @@ class PlanSuccessMeasure:
     measure_id: str
     summary: str
     target_state: str
+    measurement_method: str = "human_review"
+    evidence_refs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class PlanResourceRequirement:
     requirement_id: str
     summary: str
+    resource_type: str = "unknown"
+    availability: str = "unconfirmed"
+    confidence: str = "unknown"
 
 
 @dataclass(frozen=True)
 class PlanOwnerRequirement:
     requirement_id: str
     summary: str
+    required_role: str = "owner"
+    required_user_id: str | None = None
+    confidence: str = "unknown"
 
 
 @dataclass(frozen=True)
@@ -172,6 +221,12 @@ class PlanEvaluationCriterion:
     title: str
     weight: int
     rationale: str
+    description: str = ""
+    scale: str = "1-5"
+    calculation_method: str = "bounded_deterministic_rating"
+    evidence: tuple[str, ...] = ()
+    assumptions: tuple[str, ...] = ()
+    confidence: str = "derived"
 
 
 @dataclass(frozen=True)
@@ -182,6 +237,8 @@ class PlanEvaluation:
     criterion_rationales: Mapping[str, str]
     total_score: int
     summary: str
+    criteria: tuple[PlanEvaluationCriterion, ...] = ()
+    formula: str = "sum(rating * weight)"
 
     def safe_trace(self) -> dict[str, Any]:
         return {
@@ -197,11 +254,22 @@ class PlanEvaluation:
 class ApprovalRequirement:
     approval_requirement_id: str
     summary: str
+    approval_class: str = "human_authorisation"
+    reason: str = "Future external or high-impact action requires approval."
+    required_before_step_ids: tuple[str, ...] = ()
+    required_before_capability_ids: tuple[str, ...] = ()
+    required_approver_role: str = "authorised_human_actor"
+    required_approver_user_id: str | None = None
+    evidence_summary: str = ""
+    risk_class: str = "medium"
+    status: str = NOT_REQUESTED
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     required_role: str = "authorised_human_actor"
     approval_status: str = NOT_REQUESTED
 
     def __post_init__(self) -> None:
         _require_value("approval_status", self.approval_status, {NOT_REQUESTED})
+        _require_value("status", self.status, {NOT_REQUESTED})
 
 
 @dataclass(frozen=True)
@@ -209,7 +277,16 @@ class ProposedActionReference:
     proposed_action_reference_id: str
     action_type: str
     summary: str
+    related_step_id: str | None = None
+    capability_id: str | None = None
+    external_system: str | None = None
+    risk_class: str = "medium"
+    reversibility: str = "unknown"
+    approval_required: bool = True
     approval_requirement_id: str | None = None
+    payload_schema_reference: str | None = None
+    payload_preview_safe: Mapping[str, Any] | None = None
+    evidence_references: tuple[str, ...] = ()
     adapter_id: str | None = None
     external_payload: Mapping[str, Any] | None = None
     approval_status: str = NOT_REQUESTED
@@ -274,6 +351,13 @@ class ExecutivePlan:
     planning_request_id: str
     strategy_id: str
     objective: PlanObjective
+    version: int = 1
+    tenant_id: str | None = None
+    user_id: str | None = None
+    request_id: str | None = None
+    reasoning_plan_id: str | None = None
+    concise_summary: str = ""
+    scope: str = "request_scoped"
     constraints: tuple[PlanConstraint, ...] = ()
     assumptions: tuple[PlanAssumption, ...] = ()
     workstreams: tuple[PlanWorkstream, ...] = ()
@@ -286,21 +370,37 @@ class ExecutivePlan:
     success_measures: tuple[PlanSuccessMeasure, ...] = ()
     resource_requirements: tuple[PlanResourceRequirement, ...] = ()
     owner_requirements: tuple[PlanOwnerRequirement, ...] = ()
+    candidate_plans: tuple[str, ...] = ()
+    recommended_candidate_id: str | None = None
     evaluation: PlanEvaluation | None = None
     recommendation: PlanRecommendation | None = None
     evidence_refs: tuple[PlanningEvidenceReference, ...] = ()
     approval_requirements: tuple[ApprovalRequirement, ...] = ()
     proposed_actions: tuple[ProposedActionReference, ...] = ()
     limitations: tuple[str, ...] = (PLANNING_LIMITATION,)
+    confidence: str = "unknown"
+    generated_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    valid_from: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    stale_after: str = field(
+        default_factory=lambda: (datetime.now(UTC) + timedelta(days=7)).isoformat()
+    )
+    sensitivity: str = "internal"
+    lifecycle_state: str = PROPOSED
     plan_status: str = PROPOSED
     approval_status: str = NOT_REQUESTED
     execution_status: str = NOT_EXECUTED
+    trace_metadata: Mapping[str, Any] = field(default_factory=dict)
     model_assisted: bool = False
 
     def __post_init__(self) -> None:
         _require_value("plan_status", self.plan_status, {PROPOSED})
+        _require_value("lifecycle_state", self.lifecycle_state, {PROPOSED})
         _require_value("approval_status", self.approval_status, {NOT_REQUESTED})
         _require_value("execution_status", self.execution_status, {NOT_EXECUTED})
+        if self.version < 1:
+            raise ValueError("version must be >= 1")
+        _require_scope_id("tenant_id", self.tenant_id)
+        _require_scope_id("user_id", self.user_id)
         if self.model_assisted:
             raise ValueError("model-assisted planning is disabled for v1 rollout")
 
@@ -309,6 +409,10 @@ class ExecutivePlan:
             "plan_id": _safe_label(self.plan_id),
             "planning_request_id": _safe_label(self.planning_request_id),
             "strategy_id": _safe_label(self.strategy_id),
+            "version": self.version,
+            "tenant_id_digest": _digest(self.tenant_id or "")[:16],
+            "user_id_digest": _digest(self.user_id or "")[:16],
+            "reasoning_plan_id": _safe_label(self.reasoning_plan_id),
             "objective": self.objective.safe_trace(),
             "workstream_count": len(self.workstreams),
             "milestone_count": len(self.milestones),
@@ -320,6 +424,12 @@ class ExecutivePlan:
             "success_measure_count": len(self.success_measures),
             "approval_requirement_count": len(self.approval_requirements),
             "proposed_action_count": len(self.proposed_actions),
+            "evidence_reference_count": len(self.evidence_refs),
+            "assumption_count": len(self.assumptions),
+            "limitation_count": len(self.limitations),
+            "confidence": self.confidence,
+            "sensitivity": self.sensitivity,
+            "lifecycle_state": self.lifecycle_state,
             "plan_status": self.plan_status,
             "approval_status": self.approval_status,
             "execution_status": self.execution_status,
@@ -327,7 +437,15 @@ class ExecutivePlan:
         }
 
 
-CandidatePlan = ExecutivePlan
+@dataclass(frozen=True)
+class CandidatePlan(ExecutivePlan):
+    candidate_id: str | None = None
+    name: str = ""
+    time_horizon: str | None = None
+    resource_profile: str = "unknown"
+    complexity: str = "medium"
+    reversibility: str = "partially_reversible"
+    evidence_coverage: str = "partial"
 
 
 @dataclass(frozen=True)
@@ -404,6 +522,8 @@ class PlanningStrategy:
     external_calls_enabled: bool = False
     health: str = "ok"
     risk: str = "low"
+    tenant_scope: str = "all"
+    user_scope: str = "all"
 
     def safe_trace(self) -> dict[str, Any]:
         return {
@@ -419,28 +539,79 @@ class PlanningStrategy:
             "external_calls_enabled": self.external_calls_enabled,
             "health": self.health,
             "risk": self.risk,
+            "tenant_scope": self.tenant_scope,
+            "user_scope": self.user_scope,
         }
 
 
 class PlanningRegistry:
     def __init__(self, strategies: Sequence[PlanningStrategy]) -> None:
-        self._strategies = {strategy.strategy_id: strategy for strategy in strategies}
+        self._strategies: dict[str, PlanningStrategy] = {}
+        for strategy in strategies:
+            self.register(strategy)
+
+    def register(self, strategy: PlanningStrategy) -> None:
+        if strategy.strategy_id in self._strategies:
+            raise ValueError(f"duplicate planning strategy: {strategy.strategy_id}")
+        if strategy.execution_supported or strategy.external_calls_enabled:
+            raise ValueError(
+                "planning strategies cannot support execution or external calls"
+            )
+        self._strategies[strategy.strategy_id] = strategy
+
+    def enable(self, strategy_id: str) -> None:
+        self._strategies[strategy_id] = replace(
+            self.lookup(strategy_id),
+            enabled=True,
+            lifecycle_state="enabled",
+        )
+
+    def disable(self, strategy_id: str) -> None:
+        self._strategies[strategy_id] = replace(
+            self.lookup(strategy_id),
+            enabled=False,
+            lifecycle_state="disabled",
+        )
 
     def strategy_ids(self) -> tuple[str, ...]:
         return tuple(sorted(self._strategies))
 
     def lookup(self, strategy_id: str) -> PlanningStrategy:
         try:
-            return self._strategies[strategy_id]
+            strategy = self._strategies[strategy_id]
         except KeyError as exc:
             raise ValueError(f"unknown planning strategy: {strategy_id}") from exc
+        if not strategy.enabled:
+            raise ValueError(f"disabled planning strategy: {strategy_id}")
+        if strategy.lifecycle_state != "enabled":
+            raise ValueError(f"unavailable planning strategy: {strategy_id}")
+        if strategy.health != "ok":
+            raise ValueError(f"unhealthy planning strategy: {strategy_id}")
+        return strategy
 
     def enabled_strategies(self) -> tuple[PlanningStrategy, ...]:
         return tuple(
             self._strategies[strategy_id]
             for strategy_id in self.strategy_ids()
             if self._strategies[strategy_id].enabled
+            and self._strategies[strategy_id].lifecycle_state == "enabled"
+            and self._strategies[strategy_id].health == "ok"
         )
+
+    def select(
+        self,
+        strategy_id: str,
+        *,
+        tenant_id: str,
+        actor_id: str,
+        deterministic_only: bool = True,
+    ) -> PlanningStrategy:
+        strategy = self.lookup(strategy_id)
+        _require_scope_id("tenant_id", tenant_id)
+        _require_scope_id("actor_id", actor_id)
+        if deterministic_only and not strategy.deterministic:
+            raise ValueError(f"non-deterministic planning strategy: {strategy_id}")
+        return strategy
 
     def health(self) -> dict[str, Any]:
         return {
@@ -475,7 +646,25 @@ class ExecutivePlanningRequest:
     context_source_counts: Mapping[str, int]
     evidence_refs: tuple[str, ...]
     safety_state: str
+    primary_objective: str = ""
+    desired_outcome: str = ""
+    completion_definition: str = ""
+    time_horizon: str | None = None
+    scope: str = "request_scoped"
+    excluded_scope: tuple[str, ...] = ()
+    constraints: tuple[str, ...] = ()
+    known_resources: tuple[str, ...] = ()
+    known_owners: tuple[str, ...] = ()
+    known_dependencies: tuple[str, ...] = ()
+    success_measures: tuple[str, ...] = ()
+    unresolved_questions: tuple[str, ...] = ()
     trace_metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _require_scope_id("tenant_id", self.tenant_id)
+        _require_scope_id("actor_id", self.actor_id)
+        if not self.planning_request_id.strip():
+            raise ValueError("planning_request_id is required")
 
     @classmethod
     def from_reasoning_plan(
@@ -516,6 +705,15 @@ class ExecutivePlanningRequest:
             ],
             safety_state=safety_state
             or str(trace.get("safety_state") or "normal_non_executing"),
+            primary_objective=str(trace.get("user_objective") or "").strip(),
+            desired_outcome=_desired_outcome_from_text(normalized_user_request),
+            completion_definition=_completion_definition_from_text(
+                normalized_user_request
+            ),
+            constraints=tuple(str(item) for item in trace.get("constraints") or ()),
+            unresolved_questions=tuple(
+                str(item) for item in trace.get("missing_information") or ()
+            ),
             trace_metadata=dict(trace_metadata),
         )
 
@@ -553,13 +751,11 @@ class PlanningPolicy:
                 "reasoning_mode_not_planning_stub",
                 "Planning requires a safe planning_stub ReasoningPlan.",
             )
-        if _is_external_mutation_text(
-            request.normalized_user_request
-        ) and not _allows_non_executing_plan_language(request.normalized_user_request):
+        if _contains_command_like_payload(request.normalized_user_request):
             return PlanningPolicyDecision(
                 False,
-                "external_action_not_plannable_without_approval",
-                "External action requests require future Approval and Execution boundaries.",
+                "unsafe_payload_not_plannable",
+                "Unsafe executable payloads cannot become planning content.",
             )
         if not _has_objective(request.normalized_user_request):
             return PlanningPolicyDecision(
@@ -600,7 +796,28 @@ class ExecutivePlanningEngine:
                 latency_ms=_elapsed_ms(started),
             )
         strategy_id = _select_strategy(request.normalized_user_request)
-        strategy = self.registry.lookup(strategy_id)
+        try:
+            strategy = self.registry.select(
+                strategy_id,
+                tenant_id=request.tenant_id,
+                actor_id=request.actor_id,
+                deterministic_only=True,
+            )
+        except ValueError as exc:
+            return PlanningSnapshot(
+                planning_request_id=request.planning_request_id,
+                status="not_eligible",
+                strategy_id=strategy_id,
+                eligible=False,
+                reason_code="strategy_unavailable",
+                errors=(
+                    PlanningError(
+                        "strategy_unavailable",
+                        _safe_text(str(exc), 240),
+                    ),
+                ),
+                latency_ms=_elapsed_ms(started),
+            )
         candidates = _generate_candidates(request, strategy, self.limits)
         candidates = tuple(candidates[: self.limits.max_candidates])
         evaluated = tuple(_attach_evaluations(candidates, strategy_id))
@@ -608,6 +825,7 @@ class ExecutivePlanningEngine:
             error
             for candidate in evaluated
             for error in validate_plan_dependencies(candidate)
+            + validate_plan_structure(candidate)
         )
         if errors:
             return PlanningSnapshot(
@@ -736,7 +954,13 @@ def build_planning_status() -> dict[str, Any]:
         "enabled_strategy_count": len(registry.enabled_strategies()),
         "storage_mode": "request_scoped",
         "last_status": "ok",
+        "last_plan_status": PROPOSED,
         "last_error": None,
+        "last_candidate_count": 0,
+        "last_step_count": 0,
+        "last_risk_count": 0,
+        "last_approval_requirement_count": 0,
+        "last_proposed_action_count": 0,
         "safe_digest": _digest(json.dumps(registry.health(), sort_keys=True))[:16],
         "redacted": True,
     }
@@ -854,6 +1078,84 @@ def validate_plan_dependencies(plan: ExecutivePlan) -> tuple[PlanningError, ...]
     return ()
 
 
+def validate_plan_structure(plan: ExecutivePlan) -> tuple[PlanningError, ...]:
+    if plan.plan_status != PROPOSED or plan.lifecycle_state != PROPOSED:
+        return (
+            PlanningError(
+                "invalid_lifecycle_state",
+                "A v1 plan attempted to leave the proposed lifecycle.",
+            ),
+        )
+    if plan.approval_status != NOT_REQUESTED:
+        return (
+            PlanningError(
+                "approval_boundary_violation",
+                "A v1 plan attempted to request or record approval.",
+            ),
+        )
+    if plan.execution_status != NOT_EXECUTED:
+        return (
+            PlanningError(
+                "execution_boundary_violation",
+                "A v1 plan attempted to change execution state.",
+            ),
+        )
+    if not plan.tenant_id or not plan.user_id:
+        return (
+            PlanningError(
+                "cross_tenant_scope",
+                "A v1 plan must carry tenant and user scope.",
+            ),
+        )
+    for milestone in plan.milestones:
+        if not milestone.completion_condition.strip():
+            return (
+                PlanningError(
+                    "milestone_incomplete",
+                    "A milestone is missing its completion condition.",
+                ),
+            )
+    approval_ids = {
+        requirement.approval_requirement_id
+        for requirement in plan.approval_requirements
+        if requirement.approval_status == NOT_REQUESTED
+        and requirement.status == NOT_REQUESTED
+    }
+    for action in plan.proposed_actions:
+        if action.approval_status != NOT_REQUESTED:
+            return (
+                PlanningError(
+                    "approval_boundary_violation",
+                    "A proposed action attempted to advance approval state.",
+                ),
+            )
+        if action.execution_status != NOT_EXECUTED:
+            return (
+                PlanningError(
+                    "execution_boundary_violation",
+                    "A proposed action attempted to advance execution state.",
+                ),
+            )
+        if action.adapter_id or action.external_payload:
+            return (
+                PlanningError(
+                    "execution_boundary_violation",
+                    "A proposed action attempted to bind an adapter or payload.",
+                ),
+            )
+        if (
+            action.approval_required
+            and action.approval_requirement_id not in approval_ids
+        ):
+            return (
+                PlanningError(
+                    "approval_boundary_violation",
+                    "A future external action is missing a not_requested approval requirement.",
+                ),
+            )
+    return ()
+
+
 def _generate_candidates(
     request: ExecutivePlanningRequest,
     strategy: PlanningStrategy,
@@ -893,6 +1195,7 @@ def _build_candidate_plan(
         title=_strategy_workstream_title(strategy.strategy_id, variant),
         objective=_objective_summary(request, variant),
         sequence=1,
+        success_measure_ids=(f"sm_{base_id}_1",),
     )
     milestones = tuple(
         PlanMilestone(
@@ -900,6 +1203,8 @@ def _build_candidate_plan(
             title=title,
             success_measure_ids=(f"sm_{base_id}_{i}",),
             sequence=i,
+            completion_condition="Named completion evidence is ready for human review.",
+            evidence_refs=request.evidence_refs,
         )
         for i, title in enumerate(
             _milestone_titles(strategy.strategy_id, variant), start=1
@@ -923,7 +1228,17 @@ def _build_candidate_plan(
             if milestones
             else None,
             description="Proposed planning work only; not an executable instruction.",
+            step_type=strategy.strategy_id.replace("_plan", ""),
+            dependencies=tuple(),
+            expected_output="Decision-ready proposed planning artefact.",
+            success_condition="Human reviewer can accept, reject or ask to revise the proposal.",
+            approval_requirement="future_approval_required_before_execution"
+            if _is_external_mutation_text(request.normalized_user_request)
+            else None,
+            capability_requirements=(_capability_requirement_for_title(title),),
             evidence_refs=request.evidence_refs,
+            assumptions=("Operational details remain unconfirmed.",),
+            risks=("Execution must not begin from this proposal.",),
         )
         for i, title in enumerate(_step_titles(strategy.strategy_id, variant), start=1)
     )[: limits.max_steps]
@@ -940,10 +1255,17 @@ def _build_candidate_plan(
             decision_point_id=f"dp_{base_id}_1",
             title="Authorised human review before approval or execution is considered.",
             required_before_step_id=steps[-1].step_id if steps else None,
+            evidence_required=("approval_boundary_evidence",),
+            risk_class="medium",
         ),
     )
     risks = tuple(
-        PlanRisk(risk_id=f"risk_{base_id}_{i}", summary=summary)
+        PlanRisk(
+            risk_id=f"risk_{base_id}_{i}",
+            summary=summary,
+            likelihood="unknown",
+            impact="medium",
+        )
         for i, summary in enumerate(_risk_summaries(strategy.strategy_id), start=1)
     )[: limits.max_risks]
     mitigations = tuple(
@@ -991,19 +1313,32 @@ def _build_candidate_plan(
         plan_id=plan_id,
         planning_request_id=request.planning_request_id,
         strategy_id=strategy.strategy_id,
+        tenant_id=request.tenant_id,
+        user_id=request.actor_id,
+        request_id=request.correlation_id,
+        reasoning_plan_id=str(request.reasoning_plan.get("plan_id") or ""),
+        concise_summary=f"Proposed {strategy.strategy_id} using {_safe_label(variant)} route.",
+        scope=request.scope,
         objective=PlanObjective(
             objective_id=f"objective_{base_id}",
             summary=_objective_summary(request, variant),
+            desired_outcome=request.desired_outcome,
+            completion_definition=request.completion_definition,
+            time_horizon=request.time_horizon,
+            scope=request.scope,
+            excluded_scope=request.excluded_scope,
             evidence_refs=request.evidence_refs,
         ),
         constraints=(
             PlanConstraint(
                 constraint_id=f"constraint_{base_id}_1",
                 summary="No approvals or external execution are available in Planning Engine v1.",
+                constraint_type="safety",
             ),
             PlanConstraint(
                 constraint_id=f"constraint_{base_id}_2",
                 summary="Use only bounded Hermes context, intelligence and reasoning evidence.",
+                constraint_type="evidence",
             ),
         ),
         assumptions=(
@@ -1020,9 +1355,30 @@ def _build_candidate_plan(
         risks=risks,
         mitigations=mitigations,
         success_measures=success,
+        resource_requirements=(
+            PlanResourceRequirement(
+                requirement_id=f"res_{base_id}_1",
+                summary="Required resources are unconfirmed and must be validated before approval.",
+                resource_type="team_capacity",
+            ),
+        ),
+        owner_requirements=(
+            PlanOwnerRequirement(
+                requirement_id=f"owner_{base_id}_1",
+                summary="A responsible owner must be named before approval.",
+                required_role="accountable_owner",
+            ),
+        ),
         evidence_refs=evidence_refs,
         approval_requirements=approvals,
         proposed_actions=proposed_actions[: limits.max_proposed_actions],
+        confidence=_planning_confidence_seed(request),
+        candidate_id=plan_id,
+        name=_strategy_workstream_title(strategy.strategy_id, variant),
+        time_horizon=request.time_horizon,
+        resource_profile="unconfirmed",
+        complexity="medium",
+        evidence_coverage="partial" if request.evidence_refs else "limited",
     )
 
 
@@ -1042,15 +1398,19 @@ def _attach_evaluations(
             ratings[criterion.criterion_id] * criterion.weight for criterion in criteria
         )
         evaluated.append(
-            _replace_plan(
-                candidate,
-                evaluation=PlanEvaluation(
-                    evaluation_id=f"eval_{candidate.plan_id}",
-                    candidate_plan_id=candidate.plan_id,
-                    criterion_ratings=ratings,
-                    criterion_rationales=rationales,
-                    total_score=total,
-                    summary="Transparent deterministic evaluation from bounded criteria.",
+            cast(
+                CandidatePlan,
+                _replace_plan(
+                    candidate,
+                    evaluation=PlanEvaluation(
+                        evaluation_id=f"eval_{candidate.plan_id}",
+                        candidate_plan_id=candidate.plan_id,
+                        criterion_ratings=ratings,
+                        criterion_rationales=rationales,
+                        total_score=total,
+                        summary="Transparent deterministic evaluation from bounded criteria.",
+                        criteria=criteria,
+                    ),
                 ),
             )
         )
@@ -1066,22 +1426,28 @@ def _with_recommendation(
         for plan in candidates
         if plan.plan_id != recommended.plan_id
     )
-    return _replace_plan(
-        recommended,
-        recommendation=PlanRecommendation(
-            recommended_plan_id=recommended.plan_id,
-            rationale=(
-                "Recommended as the strongest proposed route from the deterministic "
-                "evaluation. This plan is not approved or executed."
+    return cast(
+        CandidatePlan,
+        _replace_plan(
+            recommended,
+            recommendation=PlanRecommendation(
+                recommended_plan_id=recommended.plan_id,
+                rationale=(
+                    "Recommended as the strongest proposed route from the deterministic "
+                    "evaluation. This plan is not approved or executed."
+                ),
+                tradeoffs=(
+                    "More detail will be required before approval.",
+                    "Owners, dates and resources remain proposal-level unless supplied as evidence.",
+                ),
+                alternate_conditions=alternates,
+                unresolved_assumptions=tuple(
+                    item.summary for item in recommended.assumptions
+                ),
+                approval_status=NOT_REQUESTED,
+                execution_status=NOT_EXECUTED,
             ),
-            tradeoffs=(
-                "More detail will be required before approval.",
-                "Owners, dates and resources remain proposal-level unless supplied as evidence.",
-            ),
-            alternate_conditions=alternates,
-            unresolved_assumptions=tuple(
-                item.summary for item in recommended.assumptions
-            ),
+            recommended_candidate_id=recommended.plan_id,
         ),
     )
 
@@ -1092,6 +1458,8 @@ def _replace_plan(plan: ExecutivePlan, **changes: Any) -> ExecutivePlan:
 
 def _select_strategy(text: str) -> str:
     folded = text.casefold()
+    if _is_external_mutation_text(folded):
+        return "implementation_plan"
     if _contains_any(
         folded,
         ("implement", "deployment", "migration", "technical", "rollout", "build"),
@@ -1270,6 +1638,13 @@ def _proposed_actions_for_request(
             ApprovalRequirement(
                 approval_requirement_id=approval_id,
                 summary=f"Authorised human approval required before {action_type} can be considered.",
+                approval_class="external_mutation_authorisation",
+                reason="Planning v1 may describe this future action but cannot approve or execute it.",
+                required_before_capability_ids=(action_type,),
+                evidence_summary="Requires explicit future Approval boundary evidence.",
+                risk_class="high"
+                if action_type.startswith(("email", "calendar", "clickup"))
+                else "medium",
             )
         )
         actions.append(
@@ -1277,7 +1652,19 @@ def _proposed_actions_for_request(
                 proposed_action_reference_id=f"pa_{base_id}_{index}",
                 action_type=action_type,
                 summary=f"Declarative reference for future {action_type}; no adapter or payload is attached.",
+                capability_id=action_type,
+                external_system=_external_system_for_action_type(action_type),
+                risk_class="high"
+                if action_type.startswith(("email", "calendar", "clickup"))
+                else "medium",
+                reversibility="unknown_until_future_execution_design",
                 approval_requirement_id=approval_id,
+                payload_schema_reference="future_approval_execution_contract",
+                payload_preview_safe={
+                    "description_only": True,
+                    "contains_live_payload": False,
+                },
+                evidence_references=request.evidence_refs,
             )
         )
     return tuple(actions), tuple(approvals)
@@ -1289,6 +1676,57 @@ def _planning_confidence(request: ExecutivePlanningRequest, plan: ExecutivePlan)
     if plan.assumptions:
         return "derived"
     return "known"
+
+
+def _planning_confidence_seed(request: ExecutivePlanningRequest) -> str:
+    if not request.evidence_refs:
+        return "assumed"
+    if request.unresolved_questions:
+        return "derived"
+    return "known"
+
+
+def _desired_outcome_from_text(text: str) -> str:
+    folded = text.casefold()
+    if _contains_any(folded, ("decide", "decision", "compare", " or ")):
+        return "A decision-ready comparison with evidence gaps and tradeoffs."
+    if _contains_any(folded, ("implement", "build", "rollout", "migration")):
+        return "An approval-ready implementation proposal with validation gates."
+    if _contains_any(folded, ("review", "audit", "assess")):
+        return "A bounded review sequence with findings categories and decision points."
+    return "A proposed milestone route with assumptions, risks and success measures."
+
+
+def _completion_definition_from_text(text: str) -> str:
+    folded = text.casefold()
+    if _contains_any(folded, ("seven-day", "7-day", "week")):
+        return "Seven-day proposal is ready for owner review."
+    if _contains_any(folded, ("tomorrow", "today")):
+        return "Near-term proposal is ready with unavailable live-action caveats."
+    return "Candidate plan and recommendation are ready for human review."
+
+
+def _capability_requirement_for_title(title: str) -> str:
+    folded = title.casefold()
+    if "approval" in folded:
+        return "future_approval_boundary"
+    if "validation" in folded or "review" in folded:
+        return "human_review"
+    return "planning_only"
+
+
+def _external_system_for_action_type(action_type: str) -> str | None:
+    if action_type.startswith("clickup"):
+        return "clickup"
+    if action_type.startswith("email"):
+        return "email"
+    if action_type.startswith("calendar"):
+        return "google_calendar"
+    if action_type.startswith("whatsapp"):
+        return "whatsapp"
+    if action_type.startswith("slack"):
+        return "slack"
+    return None
 
 
 def _source_category_for_ref(ref: str, counts: Mapping[str, int]) -> str:
@@ -1368,6 +1806,11 @@ def _elapsed_ms(started: float) -> int:
 def _require_value(field_name: str, value: str, allowed: set[str]) -> None:
     if value not in allowed:
         raise ValueError(f"{field_name} must be one of {sorted(allowed)}")
+
+
+def _require_scope_id(field_name: str, value: str | None) -> None:
+    if not str(value or "").strip():
+        raise ValueError(f"{field_name} is required")
 
 
 def _contains_any(text: str, needles: tuple[str, ...]) -> bool:

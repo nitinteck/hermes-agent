@@ -1,6 +1,6 @@
 # Hermes Executive Planning Acceptance Test v1
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 
 ## Synthetic Pack
 
@@ -10,6 +10,7 @@ Last updated: 2026-07-29
 | P2 | Build an implementation plan for a rollout, but do not run deployment commands. | `implementation_plan`, no shell commands, no execution |
 | P3 | Plan whether we should stabilise WhatsApp behaviour or add read-only Gmail first. | `decision_plan`, meaningful candidates, transparent evaluation |
 | P4 | Plan how we would create a ClickUp task tomorrow, but do not execute. | descriptive `ProposedActionReference`, no adapter, no payload |
+| P5 | Create the tasks, book the meetings and email the team. | synthetic Planning Engine input may describe future actions only; approval remains `not_requested`, execution remains `not_executed` |
 
 ## Required Assertions
 
@@ -18,11 +19,16 @@ Last updated: 2026-07-29
 - All approval statuses remain `not_requested`.
 - All execution statuses remain `not_executed`.
 - Proposed actions are descriptive and non-executable.
+- Tenant and user scope are required on planning requests and plans.
+- Registry registration rejects execution-capable or external-call strategies.
 - Dependency validation rejects missing and circular references.
+- Deterministic scenarios produce stable safe plan digests.
 - Orchestrator prompt includes `EXECUTIVE PLANNING SNAPSHOT` only for eligible
   planning turns.
 - Simple conversation bypasses planning.
 - External execution requests fail closed before model invocation.
+- Planning source contains no integration, adapter, MCP, subprocess or shell
+  execution call sites.
 
 ## Commands
 

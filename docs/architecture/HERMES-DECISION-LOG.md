@@ -28,6 +28,7 @@ clarifies an architectural decision. Link detailed ADRs where they exist.
 | HDL-0013 | 2026-07-30 | YAML, JSON, and CSV are import-only surfaces. | accepted | They may create dry-run candidates but are never runtime authority. |
 | HDL-0014 | 2026-07-30 | Every future milestone updates roadmap, constitution, decision log, and technical debt register. | accepted | Documentation maintenance is part of milestone completion, not after-the-fact cleanup. |
 | HDL-0015 | 2026-07-30 | RC1 runtime feature development is frozen during owner WhatsApp validation. | accepted | OVOS PR #14 and Hermes PR #25 remain open/unmerged; no Business Knowledge migration, deployment, connectors, approvals, or execution during RC1 testing. |
+| HDL-0016 | 2026-07-30 | Executive Planning Engine v1 remains a proposal-only layer between Reasoning and future Approval. | accepted | Planning contracts and strategies may describe candidate future actions, but approval status stays `not_requested`, execution status stays `not_executed`, and no adapter, MCP, subprocess or connector call may be made by Planning. |
 
 ## Pending Decisions
 

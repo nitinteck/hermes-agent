@@ -1,6 +1,6 @@
 # Hermes Executive Intelligence Engine v1
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 
 ## Position
 
@@ -11,8 +11,8 @@ derived from those facts?
 
 Executive Insights, recommendations, forecasts and proposed action references
 remain separate layers. Planning Engine v1 may create descriptive
-`ProposedActionReference` records; Intelligence v1 remains facts and signals
-only.
+`ProposedActionReference` records after Reasoning produces an eligible
+non-executing planning stub; Intelligence v1 remains facts and signals only.
 
 Runtime flow:
 

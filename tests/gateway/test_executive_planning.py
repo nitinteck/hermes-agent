@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import inspect
 import json
+import re
 
 import pytest
 
@@ -125,7 +127,7 @@ def test_planning_policy_allows_only_safe_reasoning_planning_stub() -> None:
 
     unsafe = ExecutivePlanningRequest.from_reasoning_plan(
         reasoning_plan=plan,
-        normalized_user_request="Send an email after planning.",
+        normalized_user_request="Plan how to run shell rm -rf /tmp/example.",
         tenant_id="tenant-1",
         actor_id="user-1",
         context_source_counts={},
@@ -136,7 +138,7 @@ def test_planning_policy_allows_only_safe_reasoning_planning_stub() -> None:
     blocked = PlanningPolicy().evaluate(unsafe)
 
     assert blocked.eligible is False
-    assert blocked.reason_code == "external_action_not_plannable_without_approval"
+    assert blocked.reason_code == "unsafe_payload_not_plannable"
 
 
 def test_planning_engine_produces_bounded_proposals_only() -> None:
@@ -226,6 +228,8 @@ def test_planning_dependency_validation_rejects_missing_and_circular_dependencie
         plan_id="plan_missing",
         planning_request_id="epr_missing",
         strategy_id="milestone_plan",
+        tenant_id="tenant-1",
+        user_id="user-1",
         objective=PlanObjective(objective_id="objective-1", summary="Plan safely."),
         steps=(PlanStep(step_id="step-1", title="One", sequence=1),),
         dependencies=(
@@ -240,6 +244,8 @@ def test_planning_dependency_validation_rejects_missing_and_circular_dependencie
         plan_id="plan_cycle",
         planning_request_id="epr_cycle",
         strategy_id="milestone_plan",
+        tenant_id="tenant-1",
+        user_id="user-1",
         objective=PlanObjective(objective_id="objective-1", summary="Plan safely."),
         steps=(
             PlanStep(step_id="step-1", title="One", sequence=1),
@@ -255,6 +261,183 @@ def test_planning_dependency_validation_rejects_missing_and_circular_dependencie
         ),
     )
     assert validate_plan_dependencies(circular)[0].code == "circular_dependency"
+
+
+def test_planning_request_and_plan_require_tenant_user_scope() -> None:
+    from gateway.executive_planning import (
+        ExecutivePlan,
+        ExecutivePlanningRequest,
+        PlanObjective,
+    )
+
+    with pytest.raises(ValueError, match="tenant_id"):
+        ExecutivePlanningRequest(
+            planning_request_id="epr_scope",
+            correlation_id="corr",
+            tenant_id="",
+            actor_id="user-1",
+            normalized_user_request="Plan the rollout.",
+            request_classification="planning_request",
+            reasoning_plan={},
+            context_source_counts={},
+            evidence_refs=(),
+            safety_state="execution_unavailable_not_executed",
+        )
+
+    with pytest.raises(ValueError, match="user_id"):
+        ExecutivePlan(
+            plan_id="plan_scope",
+            planning_request_id="epr_scope",
+            strategy_id="milestone_plan",
+            tenant_id="tenant-1",
+            user_id="",
+            objective=PlanObjective(
+                objective_id="objective-1",
+                summary="Plan safely.",
+            ),
+        )
+
+
+def test_registry_registers_and_disables_strategies_safely() -> None:
+    from gateway.executive_planning import PlanningRegistry, PlanningStrategy
+
+    registry = PlanningRegistry(())
+    strategy = PlanningStrategy(
+        strategy_id="custom_review",
+        version="1.0",
+        description="Custom deterministic review strategy.",
+        supported_plan_types=("review",),
+    )
+
+    registry.register(strategy)
+    assert registry.lookup("custom_review").strategy_id == "custom_review"
+
+    with pytest.raises(ValueError, match="duplicate"):
+        registry.register(strategy)
+
+    registry.disable("custom_review")
+    with pytest.raises(ValueError, match="disabled"):
+        registry.lookup("custom_review")
+
+    with pytest.raises(ValueError, match="external calls"):
+        PlanningRegistry((
+            PlanningStrategy(
+                strategy_id="bad",
+                version="1.0",
+                description="Unsafe",
+                supported_plan_types=("bad",),
+                external_calls_enabled=True,
+            ),
+        ))
+
+
+def test_external_action_synthetic_plan_remains_descriptive_only() -> None:
+    from gateway.executive_planning import (
+        ExecutivePlanningRequest,
+        build_default_planning_engine,
+    )
+
+    message = "Create the tasks, book the meetings and email the team."
+    request = ExecutivePlanningRequest.from_reasoning_plan(
+        reasoning_plan=_reasoning_plan(message),
+        normalized_user_request=message,
+        tenant_id="tenant-1",
+        actor_id="user-1",
+        context_source_counts={"current_request_metadata": 1},
+        evidence_refs=("current-1",),
+        trace_metadata={},
+    )
+
+    snapshot = build_default_planning_engine().plan(request)
+
+    assert snapshot.status == "proposed"
+    assert snapshot.execution_status == "not_executed"
+    assert snapshot.approval_status == "not_requested"
+    assert snapshot.recommended_plan is not None
+    assert {
+        action.execution_status for action in snapshot.recommended_plan.proposed_actions
+    } == {"not_executed"}
+    assert {
+        action.approval_status for action in snapshot.recommended_plan.proposed_actions
+    } == {"not_requested"}
+    assert all(
+        action.adapter_id is None and action.external_payload is None
+        for action in snapshot.recommended_plan.proposed_actions
+    )
+
+
+@pytest.mark.parametrize(
+    ("message", "strategy_id"),
+    (
+        (
+            "Build an implementation plan for an internal reporting feature.",
+            "implementation_plan",
+        ),
+        (
+            "Plan whether we should choose the low-cost route or fastest route.",
+            "decision_plan",
+        ),
+        (
+            "Launch a strategic initiative over three phases.",
+            "milestone_plan",
+        ),
+        (
+            "Create the tasks, book the meetings and email the team.",
+            "implementation_plan",
+        ),
+    ),
+)
+def test_synthetic_acceptance_pack_is_deterministic_and_proposal_only(
+    message: str,
+    strategy_id: str,
+) -> None:
+    from gateway.executive_planning import (
+        ExecutivePlanningRequest,
+        build_default_planning_engine,
+    )
+
+    request = ExecutivePlanningRequest.from_reasoning_plan(
+        reasoning_plan=_reasoning_plan(message),
+        normalized_user_request=message,
+        tenant_id="tenant-1",
+        actor_id="user-1",
+        context_source_counts={"current_request_metadata": 1},
+        evidence_refs=("current-1",),
+        trace_metadata={},
+    )
+    engine = build_default_planning_engine()
+
+    first = engine.plan(request)
+    second = engine.plan(request)
+
+    assert first.safe_trace()["plan_digest"] == second.safe_trace()["plan_digest"]
+    assert first.status == "proposed"
+    assert first.strategy_id == strategy_id
+    assert first.approval_status == "not_requested"
+    assert first.execution_status == "not_executed"
+    assert first.recommended_plan is not None
+    assert first.recommended_plan.evaluation is not None
+    assert first.recommended_plan.evaluation.formula == "sum(rating * weight)"
+    assert first.recommended_plan.tenant_id == "tenant-1"
+    assert first.recommended_plan.user_id == "user-1"
+
+
+def test_planning_module_has_no_external_execution_call_sites() -> None:
+    import gateway.executive_planning as planning
+
+    source = inspect.getsource(planning)
+    forbidden_call_patterns = (
+        r"subprocess\.",
+        r"os\.system\(",
+        r"requests\.",
+        r"\.execute_read\(",
+        r"\.execute_write\(",
+        r"send_message\(",
+        r"create_event\(",
+        r"create_task\(",
+    )
+
+    assert not any(re.search(pattern, source) for pattern in forbidden_call_patterns)
 
 
 def test_orchestrator_includes_planning_snapshot_for_eligible_turns(
