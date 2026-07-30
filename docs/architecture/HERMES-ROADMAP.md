@@ -73,6 +73,7 @@ Autonomous Executive Assistant
 | RC1 WhatsApp Test | complete by precondition | owner validation completed before Slice 3 | owner-only WhatsApp behavior accepted |
 | RC1 Owner WhatsApp Validation | in progress | production runtime frozen at RC1; docs PR #26 may merge without deployment | owner structured testing complete and findings classified |
 | Business Knowledge Foundation | frozen during RC1 validation | OVOS PR #14, Hermes PR #25 remain open and unmerged | canonical relational model reviewed, not migrated or deployed |
+| Executive Planning Engine v1 hardening | in review | Hermes branch `codex/hermes-executive-planning-engine-v1-hardening` | proposal-only contracts, registry controls and acceptance tests pass without new external capability |
 | Business Knowledge Population | next | not started | curated proposed/verified facts loaded through import/review flow |
 | Hybrid Retrieval | planned | not started | relational-first retrieval with supplementary vector search |
 | Executive State | planned | not started | derived read model only, never primary authority |
@@ -86,9 +87,13 @@ Autonomous Executive Assistant
 
 ## Current Focus
 
-RC1 Owner WhatsApp Validation is the active milestone. Runtime feature
-development is frozen while the owner performs structured real-world WhatsApp
-testing.
+Executive Planning Engine v1 hardening is the active engineering review
+milestone. It does not enable new external capabilities and must not merge or
+deploy unless the proposal-only planning boundary is proven.
+
+RC1 Owner WhatsApp Validation remains the active production validation
+milestone. Production runtime feature development remains frozen while the
+owner performs structured real-world WhatsApp testing.
 
 Frozen review PRs:
 

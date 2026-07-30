@@ -121,12 +121,13 @@ Write or unknown access cannot be used for executive context collection.
 
 ## Current Milestone
 
-`Hermes Executive Planning Engine v1`
+`Hermes Executive Planning Engine v1 hardening`
 
-This milestone adds deterministic `ExecutivePlan`, `CandidatePlan`,
+This milestone hardens deterministic `ExecutivePlan`, `CandidatePlan`,
 `PlanningSnapshot`, `ApprovalRequirement` and `ProposedActionReference`
-contracts above Executive Reasoning. It does not authorise Calendar reads, add
-external writes or enable live execution.
+contracts above Executive Reasoning. It adds no new external capability. Every
+plan remains `proposed`, every approval remains `not_requested`, and every
+execution remains `not_executed`.
 
 ## Next Milestone
 

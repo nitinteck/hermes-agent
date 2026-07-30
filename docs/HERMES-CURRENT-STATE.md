@@ -1,6 +1,6 @@
 # Hermes Current State
 
-Last verified: 2026-07-29T19:20:00Z
+Last verified: 2026-07-30T18:30:00Z
 
 This is the authoritative current-state entrypoint for the deployed Hermes
 runtime. Historical checkpoint records remain useful as snapshots, but this
@@ -16,7 +16,8 @@ ClickUp or other read-only connectors.
 
 ## Current Phase
 
-HERMES EXECUTIVE PLANNING ENGINE v1.
+RC1 Owner WhatsApp Validation plus Hermes Executive Planning Engine v1
+hardening review.
 
 Current foundation capabilities:
 
@@ -30,7 +31,8 @@ Current foundation capabilities:
 
 Next approved milestone:
 
-`Hermes Executive Approval Engine v1 Design`
+`Hermes Executive Approval Engine v1 Design` after Planning Engine v1 hardening
+is reviewed and proposal-only operation is verified.
 
 ## Production Architecture
 
@@ -49,16 +51,16 @@ Runtime paths:
 Production runtime SHAs:
 
 - `hermes-agent` runtime-changing SHA:
-  `7a7ecdceab5010e5bcf5852ed756f9122e2d3b5b`
+  `3888f8d40de0a61ffb29f622043ded814f1b2e54`
 - previous runtime-changing Hermes SHA:
-  `db818dc4da080321767562de322a0968b063bbef`
-- `ovos-core`: `0e6ee394d26ff2d7a814f3c84e0ed920aaaf5232`
+  `6ca2d33ba1314504b49ecc6a80bd9716a2afeb3a`
+- `ovos-core`: `aca0d4c353a22cb0e8a9c84076c689443179545e`
 
 The exact deployed checkout SHA may be newer when documentation-only commits
 are deployed after runtime validation. The deployment report records the final
 checkout SHA.
 
-Production migrations are current through `20260729130000`.
+Production migrations are current through `20260730120000`.
 
 Configured reasoning path:
 

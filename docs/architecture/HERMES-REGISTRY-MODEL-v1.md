@@ -1,6 +1,6 @@
 # Hermes Registry Model v1
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 
 ## Registries
 
@@ -63,3 +63,8 @@ Planning flow remains:
 
 Planning registries cannot call `IntegrationService`, adapters, MCP, shell
 commands or subprocesses.
+
+The Planning Registry supports register, lookup, enable, disable, enabled-list
+and deterministic-only selection. It rejects strategies that claim execution or
+external-call support and fails closed for disabled, unavailable or unhealthy
+strategies.

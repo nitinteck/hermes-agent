@@ -161,7 +161,10 @@ HERMES_LIVE_EXECUTION_ENABLED=false
 
 Execution boundary: `not_executed`
 
-Planning Engine: enabled for eligible `planning_stub` turns only
+Planning Engine: enabled for eligible `planning_stub` turns only. Reasoning
+owns planning intent; Planning owns candidate routes, dependencies, risks,
+evaluation and recommendation. Reasoning may select Skill labels, but Skills
+remain `selected_not_executed` and cannot bypass Planning validation.
 
 Live execution: disabled
 

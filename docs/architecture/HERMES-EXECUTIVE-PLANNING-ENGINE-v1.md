@@ -1,11 +1,13 @@
 # Hermes Executive Planning Engine v1
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 
 ## Position
 
 Executive Reasoning decides what kind of thinking is needed. Executive
 Planning turns an eligible `ReasoningPlan` into deterministic candidate plans.
+The 2026-07-30 hardening branch expands the canonical contracts and validation
+surface without adding Approval, Execution or any external connector capability.
 
 Runtime flow:
 
@@ -82,6 +84,20 @@ The dataclasses reject executable, approved, authorised, executing, executed or
 completed terminal states. Proposed action references cannot bind adapter IDs
 or carry external payloads.
 
+`ExecutivePlan` carries tenant/user/request/reasoning identifiers, objective
+decomposition, scope, constraints, assumptions, workstreams, milestones, steps,
+dependencies, decision points, risks, mitigations, success measures, resource
+requirements, owner requirements, evidence references, transparent evaluation,
+recommendation, confidence, sensitivity, lifecycle state and safe trace
+metadata. `CandidatePlan` is a concrete `ExecutivePlan` subclass with candidate
+name, time horizon, resource profile, complexity, reversibility and evidence
+coverage.
+
+`ApprovalRequirement` is a contract only. Its v1 status and approval status are
+always `not_requested`. `ProposedActionReference` is descriptive only. It may
+name a future capability or external system, but it cannot contain credentials,
+adapter bindings, live payloads, command text or execution receipts.
+
 ## Eligibility
 
 Planning runs only when all conditions are true:
@@ -91,10 +107,14 @@ Planning runs only when all conditions are true:
 - Reasoning mode is `planning_stub`.
 - Reasoning plan does not permit execution.
 - A non-empty objective is available.
-- Any external-action language is explicitly framed as non-executing planning.
+- The ReasoningPlan remains non-executing and uses `planning_stub`.
 
-Simple questions, unsafe requests, direct external-action requests, unsupported
-requests and requests lacking an objective bypass planning or fail closed.
+Simple questions, unsupported requests and requests lacking an objective bypass
+planning or fail closed. Shell/subprocess-like payloads fail closed.
+External-action language may be represented only as descriptive proposed-action
+references after Reasoning has already produced an eligible non-executing
+planning stub; the gateway still blocks direct execution requests before model
+invocation.
 
 ## Strategies
 
@@ -111,9 +131,10 @@ from Reasoning, such as `milestone_planning`, but skills are never executed.
 ## Evaluation
 
 Candidate evaluation is deterministic and transparent. Criteria include
-evidence fit, safety boundary and sequence clarity. Scores are safe trace
-metadata, not hidden model judgments. The recommendation names tradeoffs,
-alternate conditions, unresolved assumptions and the approval boundary.
+evidence fit, safety boundary and sequence clarity. The formula is
+`sum(rating * weight)`. Scores are safe trace metadata, not hidden model
+judgments. The recommendation names tradeoffs, alternate conditions,
+unresolved assumptions and the approval boundary.
 
 ## Safety
 
@@ -124,3 +145,11 @@ shell commands. External systems remain unavailable.
 Plans are supplied to the reasoning provider as labelled context under
 `EXECUTIVE PLANNING SNAPSHOT`. The provider may present the plan; it cannot
 turn the plan into approval or execution.
+
+## Storage
+
+Planning v1 is request-scoped. Full plan bodies are not durably persisted by
+Hermes. Operator traces may contain safe digests, counts, lifecycle state,
+approval state, execution state, selected strategy, error codes and validation
+results, but not raw private plan text, credentials, prompts or external
+payloads.

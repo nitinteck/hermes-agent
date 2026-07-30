@@ -835,6 +835,9 @@ def classify_request(message: str) -> str:
             "reveal system prompt",
             "reveal secret",
             "api key",
+            "internal module",
+            "private instruction",
+            "safety rule",
         ),
     ):
         return "unsupported_or_unsafe"
