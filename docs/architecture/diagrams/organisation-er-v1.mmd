@@ -1,0 +1,134 @@
+erDiagram
+  ovos_executive_identities {
+    uuid id PK
+    uuid tenant_id
+    uuid owner_user_id
+    text visibility
+    uuid created_by
+    uuid source_record_id
+    uuid knowledge_object_id
+    text full_name
+  }
+  ovos_networking_observations {
+    uuid id PK
+    uuid tenant_id
+    uuid owner_user_id
+    text visibility
+    uuid created_by
+    uuid knowledge_object_id
+    uuid source_record_id
+    uuid conversation_id
+  }
+  ovos_organisation_contexts {
+    uuid id PK
+    uuid tenant_id
+    uuid owner_user_id
+    text visibility
+    uuid created_by
+    uuid source_record_id
+    uuid knowledge_object_id
+    text canonical_name
+  }
+  ovos_relationships {
+    uuid id PK
+    uuid source_object_id
+    uuid target_object_id
+    uuid tenant_id
+    uuid owner_user_id
+    text visibility
+    uuid created_by
+    text relationship_type
+  }
+  ovos_responsibility_assignments {
+    uuid id PK
+    uuid tenant_id
+    uuid owner_user_id
+    text visibility
+    uuid created_by
+    uuid source_record_id
+    uuid knowledge_object_id
+    text subject
+  }
+  ovos_team_capabilities {
+    uuid id PK
+    uuid tenant_id
+    uuid owner_user_id
+    text visibility
+    uuid created_by
+    uuid source_record_id
+    uuid knowledge_object_id
+    uuid team_member_id
+  }
+  ovos_team_members {
+    uuid id PK
+    uuid tenant_id
+    uuid owner_user_id
+    text visibility
+    uuid created_by
+    uuid source_record_id
+    uuid knowledge_object_id
+    text canonical_name
+  }
+  ovos_executive_identities ||--o{ ovos_executive_identities : references
+  ovos_executive_identities ||--o{ ovos_executive_identities : references
+  ovos_executive_identities ||--o{ ovos_executive_identities : references
+  ovos_executive_identities ||--o{ ovos_executive_identities : references
+  ovos_executive_identities ||--o{ ovos_executive_identities : references
+  ovos_executive_identities ||--o{ ovos_executive_identities : references
+  ovos_executive_identities ||--o{ ovos_executive_identities : references
+  ovos_executive_identities ||--o{ ovos_executive_identities : references
+  ovos_executive_identities ||--o{ ovos_executive_identities : references
+  ovos_networking_observations ||--o{ ovos_networking_observations : references
+  ovos_networking_observations ||--o{ ovos_networking_observations : references
+  ovos_networking_observations ||--o{ ovos_networking_observations : references
+  ovos_networking_observations ||--o{ ovos_networking_observations : references
+  ovos_networking_observations ||--o{ ovos_networking_observations : references
+  ovos_networking_observations ||--o{ ovos_networking_observations : references
+  ovos_networking_observations ||--o{ ovos_networking_observations : references
+  ovos_networking_observations ||--o{ ovos_networking_observations : references
+  ovos_networking_observations ||--o{ ovos_networking_observations : references
+  ovos_organisation_contexts ||--o{ ovos_organisation_contexts : references
+  ovos_organisation_contexts ||--o{ ovos_organisation_contexts : references
+  ovos_organisation_contexts ||--o{ ovos_organisation_contexts : references
+  ovos_organisation_contexts ||--o{ ovos_organisation_contexts : references
+  ovos_organisation_contexts ||--o{ ovos_organisation_contexts : references
+  ovos_organisation_contexts ||--o{ ovos_organisation_contexts : references
+  ovos_organisation_contexts ||--o{ ovos_organisation_contexts : references
+  ovos_organisation_contexts ||--o{ ovos_organisation_contexts : references
+  ovos_organisation_contexts ||--o{ ovos_organisation_contexts : references
+  ovos_responsibility_assignments ||--o{ ovos_responsibility_assignments : references
+  ovos_responsibility_assignments ||--o{ ovos_responsibility_assignments : references
+  ovos_responsibility_assignments ||--o{ ovos_responsibility_assignments : references
+  ovos_responsibility_assignments ||--o{ ovos_responsibility_assignments : references
+  ovos_responsibility_assignments ||--o{ ovos_responsibility_assignments : references
+  ovos_responsibility_assignments ||--o{ ovos_responsibility_assignments : references
+  ovos_responsibility_assignments ||--o{ ovos_responsibility_assignments : references
+  ovos_responsibility_assignments ||--o{ ovos_responsibility_assignments : references
+  ovos_responsibility_assignments ||--o{ ovos_responsibility_assignments : references
+  ovos_team_members ||--o{ ovos_team_capabilities : references
+  ovos_team_members ||--o{ ovos_team_capabilities : references
+  ovos_team_members ||--o{ ovos_team_capabilities : references
+  ovos_team_members ||--o{ ovos_team_capabilities : references
+  ovos_team_members ||--o{ ovos_team_capabilities : references
+  ovos_team_members ||--o{ ovos_team_capabilities : references
+  ovos_team_members ||--o{ ovos_team_capabilities : references
+  ovos_team_members ||--o{ ovos_team_capabilities : references
+  ovos_team_members ||--o{ ovos_team_capabilities : references
+  ovos_team_capabilities ||--o{ ovos_team_capabilities : references
+  ovos_team_capabilities ||--o{ ovos_team_capabilities : references
+  ovos_team_capabilities ||--o{ ovos_team_capabilities : references
+  ovos_team_capabilities ||--o{ ovos_team_capabilities : references
+  ovos_team_capabilities ||--o{ ovos_team_capabilities : references
+  ovos_team_capabilities ||--o{ ovos_team_capabilities : references
+  ovos_team_capabilities ||--o{ ovos_team_capabilities : references
+  ovos_team_capabilities ||--o{ ovos_team_capabilities : references
+  ovos_team_capabilities ||--o{ ovos_team_capabilities : references
+  ovos_team_members ||--o{ ovos_team_members : references
+  ovos_team_members ||--o{ ovos_team_members : references
+  ovos_team_members ||--o{ ovos_team_members : references
+  ovos_team_members ||--o{ ovos_team_members : references
+  ovos_team_members ||--o{ ovos_team_members : references
+  ovos_team_members ||--o{ ovos_team_members : references
+  ovos_team_members ||--o{ ovos_team_members : references
+  ovos_team_members ||--o{ ovos_team_members : references
+  ovos_team_members ||--o{ ovos_team_members : references

@@ -1,0 +1,74 @@
+erDiagram
+  auth_identities {
+    text provider_id
+    uuid user_id
+    jsonb identity_data
+    text provider
+    timestamp_with_time_zone last_sign_in_at
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+    text email
+  }
+  auth_mfa_challenges {
+    uuid id PK
+    uuid factor_id
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone verified_at
+    inet ip_address
+    text otp_code
+    jsonb web_authn_session_data
+  }
+  auth_mfa_factors {
+    uuid id PK
+    uuid user_id
+    text friendly_name
+    user_defined factor_type
+    user_defined status
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+    text secret
+  }
+  auth_refresh_tokens {
+    uuid instance_id
+    bigint id PK
+    character_varying token
+    character_varying user_id
+    boolean revoked
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+    character_varying parent
+  }
+  auth_sessions {
+    uuid id PK
+    uuid user_id
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+    uuid factor_id
+    user_defined aal
+    timestamp_with_time_zone not_after
+    timestamp_without_time_zone refreshed_at
+  }
+  auth_sso_domains {
+    uuid id PK
+    uuid sso_provider_id
+    text domain
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+  }
+  auth_sso_providers {
+    uuid id PK
+    text resource_id
+    timestamp_with_time_zone created_at
+    timestamp_with_time_zone updated_at
+    boolean disabled
+  }
+  auth_users {
+    uuid instance_id
+    uuid id PK
+    character_varying aud
+    character_varying role
+    character_varying email
+    character_varying encrypted_password
+    timestamp_with_time_zone email_confirmed_at
+    timestamp_with_time_zone invited_at
+  }
