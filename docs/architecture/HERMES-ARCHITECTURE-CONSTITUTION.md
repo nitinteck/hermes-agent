@@ -26,6 +26,28 @@ is owed preservation of a superseded model.
 - Durable authoritative state belongs in PostgreSQL.
 - Hermes should remain stateless where practical.
 - Edge Functions remain thin trusted boundaries.
+- Hermes is the underlying platform. Branded assistants such as Donna and
+  customer-facing assistants are governed instances built on Hermes, not
+  separate platforms.
+
+## Licensed Assistant Boundary
+
+- Platform, tenant, subscription, assistant licence, assistant instance,
+  channel endpoint and conversation are distinct concepts.
+- A WhatsApp number is an initial licensed channel endpoint, not the permanent
+  assistant identity.
+- Assistant licences are commercial entitlements. Assistant instances are
+  configured AI roles. Channel endpoints are delivery surfaces.
+- Internal assistants and public/customer-facing assistants require separate
+  knowledge scopes, capability scopes, disclosure policies and participant
+  identity rules.
+- Donna is the internal executive assistant for the owner, leadership and
+  authorised employees. Customer-facing assistants must not inherit Donna's
+  identity, confidential context, permissions or tone by default.
+- Unknown contacts receive the lowest-permission audience policy until
+  participant identity and authorisation are resolved.
+- Cross-assistant knowledge sharing must be explicit, audited and bounded by
+  tenant, sensitivity and disclosure policy.
 
 ## Authority Rules
 
@@ -85,6 +107,16 @@ existing table is not the canonical shape for the domain.
 - Context assembly happens before intelligence, reasoning, and planning.
 - Intelligence, reasoning, and planning cannot call integrations directly.
 - Degraded context must be explicit and must not fabricate facts.
+- Public assistants cannot access confidential Executive Context, internal
+  strategy, finance, legal, HR, private staff information, internal decisions,
+  restricted Business Knowledge, or another customer's data.
+
+## Product Launch Rules
+
+Customer-facing assistants must not go live until the relevant Business
+Knowledge, disclosure controls, assistant-instance isolation, participant
+identity handling, escalation workflow and customer acceptance tests are
+implemented and verified.
 
 ## Review Rules
 

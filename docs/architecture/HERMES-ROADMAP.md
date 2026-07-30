@@ -34,6 +34,9 @@ v
 Business Knowledge Foundation
 |
 v
+Donna Executive Conversation Engine
+|
+v
 Business Knowledge Population
 |
 v
@@ -62,6 +65,9 @@ Execution
 |
 v
 Autonomous Executive Assistant
+|
+v
+Multi-Assistant Product Foundation
 ```
 
 ## Milestone Status
@@ -72,8 +78,9 @@ Autonomous Executive Assistant
 | RC1 Deploy | complete | production VPS deployed from Hermes `3888f8d40` and OVOS `aca0d4c3` | gateway active, Supabase migrated |
 | RC1 WhatsApp Test | complete by precondition | owner validation completed before Slice 3 | owner-only WhatsApp behavior accepted |
 | RC1 Owner WhatsApp Validation | in progress | production runtime frozen at RC1; docs PR #26 may merge without deployment | owner structured testing complete and findings classified |
-| Business Knowledge Foundation | frozen during RC1 validation | OVOS PR #14, Hermes PR #25 remain open and unmerged | canonical relational model reviewed, not migrated or deployed |
-| Business Knowledge Population | next | not started | curated proposed/verified facts loaded through import/review flow |
+| Business Knowledge Foundation | review-ready, frozen during RC1 validation | OVOS PR #14, Hermes PR #25 remain open and unmerged | reviewed, explicitly unfrozen, then migrated/deployed only after RC1 testing |
+| Donna Executive Conversation Engine | next candidate | not started | owner-test findings justify conversation-engine improvements before new external capabilities |
+| Business Knowledge Population | planned | not started | curated proposed/verified facts loaded through import/review flow |
 | Hybrid Retrieval | planned | not started | relational-first retrieval with supplementary vector search |
 | Executive State | planned | not started | derived read model only, never primary authority |
 | Executive Dashboard | planned | not started | read-only operational visibility over EDP state |
@@ -83,6 +90,7 @@ Autonomous Executive Assistant
 | Approvals | planned | not started | human approval records without execution |
 | Execution | future | not started | controlled execution boundary with receipts and replay safety |
 | Autonomous Executive Assistant | future | not started | assistant acts only inside governed, approved, observable boundaries |
+| Multi-Assistant Product Foundation | future | docs-only architecture defined; no runtime implementation | assistant licensing, channel endpoints, participant identity and onboarding implemented after core EDP foundations |
 
 ## Current Focus
 
@@ -110,7 +118,38 @@ Exit criteria:
 Business Knowledge Population must not begin until the foundation PRs are
 reviewed, explicitly unfrozen, and merged.
 
-## Next Milestone: Business Knowledge Population
+## Next Candidate Milestone: Donna Executive Conversation Engine
+
+Purpose:
+
+- improve owner-facing WhatsApp behaviour without adding external
+  capabilities;
+- add a planning-versus-execution intent guard;
+- preserve a transient working set across a decision conversation;
+- enforce an evidence-led answer contract;
+- strengthen action-receipt truthfulness;
+- produce grounded executive responses;
+- refuse unsupported or unsafe requests with a useful alternative.
+
+Non-goals:
+
+- no Business Knowledge deployment;
+- no Executive State;
+- no vectors;
+- no Gmail, Calendar, ClickUp, Slack, CRM or other connectors;
+- no approvals;
+- no execution.
+
+Exit gate:
+
+- owner-test findings demonstrate the conversation defects being addressed;
+- Hermes tracks explicit options and constraints inside a conversation;
+- Hermes distinguishes proposals from executed actions;
+- evidence, uncertainty and missing context are visible without exposing
+  private internals;
+- prompt-injection and self-modification requests remain refused.
+
+## Later Milestone: Business Knowledge Population
 
 Purpose:
 
@@ -133,6 +172,36 @@ Exit gate:
 - duplicate and conflict reports are reviewed;
 - Executive Context retrieves verified Business Knowledge;
 - sensitivity and disclosure policy are validated with tenant tests.
+
+## Future Product Milestone: Multi-Assistant Product Foundation
+
+Purpose:
+
+- model tenant subscriptions;
+- model assistant licences;
+- model assistant instances;
+- model channel endpoints;
+- model participant identity and audience class;
+- model assistant-specific knowledge and capability scope;
+- model the customer onboarding lifecycle;
+- define the public assistant security boundary.
+
+The initial product architecture is documented in:
+
+- `HERMES-PRODUCT-DEPLOYMENT-MODEL-v1.md`;
+- `HERMES-LICENSED-ASSISTANT-DOMAIN-v1.md`;
+- `HERMES-MULTI-ASSISTANT-SECURITY-MODEL-v1.md`;
+- `../product/HERMES-LICENSING-MODEL-v1.md`;
+- `../operations/HERMES-CUSTOMER-ONBOARDING-RUNBOOK-v1.md`.
+
+The Om Vidya Parent Assistant must not go live before:
+
+- Business Knowledge is deployed and populated with approved public facts;
+- public disclosure controls are verified;
+- assistant-instance isolation is implemented and tested;
+- participant identity handling is implemented and tested;
+- escalation workflow is implemented and tested;
+- customer acceptance testing is complete.
 
 ## Change Control
 

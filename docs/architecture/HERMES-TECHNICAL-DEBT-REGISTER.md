@@ -31,6 +31,10 @@ Debt is acceptable when named, owned, bounded, and sequenced.
 | HTD-0008 | Approvals | Approval engine is future work. | open | Approvals | EDP | User request text must not be interpreted as approval. |
 | HTD-0009 | Execution | Execution boundary is future work. | open | Execution | EDP | Requires explicit authorisation, receipts, idempotency, audit, and rollback semantics. |
 | HTD-0010 | Documentation | Older milestone docs may describe now-superseded sequencing. | open | Continuous | Hermes | Living docs here are canonical when conflicts arise. |
+| HTD-0011 | Conversation Engine | RC1 WhatsApp responses can be generic, lose option sets, over-infer and fail action-receipt truthfulness. | open | Donna Executive Conversation Engine | Hermes | Fix from owner-test evidence without enabling new capabilities. |
+| HTD-0012 | Product Model | Licensed assistant architecture is documented but not implemented in runtime or database. | open | Multi-Assistant Product Foundation | Hermes/EDP | Keep platform, tenant, licence, assistant, endpoint and conversation distinct. |
+| HTD-0013 | Public Assistant Safety | Parent Assistant requires disclosure controls, participant identity, isolation and escalation workflow. | blocked | Multi-Assistant Product Foundation | Hermes/EDP | Blocked on Business Knowledge deployment, public knowledge population and customer acceptance testing. |
+| HTD-0014 | Operations | Customer onboarding, WhatsApp provisioning, go-live and offboarding are runbooks only. | open | Multi-Assistant Product Foundation | Operations | Do not automate until the product foundation milestone is approved. |
 
 ## Debt Acceptance Criteria
 
