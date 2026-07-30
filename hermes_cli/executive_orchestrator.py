@@ -283,6 +283,9 @@ def run_local_diagnostic_turn(
             "context_provider_snapshot": dict(
                 meta.get("context_provider_snapshot") or {}
             ),
+            "executive_context_repository": dict(
+                meta.get("executive_context_repository") or {}
+            ),
             "effective_configuration": effective_configuration,
         }
     finally:
@@ -414,6 +417,9 @@ def run_local_behavioural_pack(
                 "context_source_counts": dict(meta.get("context_source_counts") or {}),
                 "context_provider_snapshot": dict(
                     meta.get("context_provider_snapshot") or {}
+                ),
+                "executive_context_repository": dict(
+                    meta.get("executive_context_repository") or {}
                 ),
                 "safety_state": meta.get("safety_state"),
                 "execution_state": "not_executed",

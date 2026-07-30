@@ -9,6 +9,11 @@ from gateway.executive_context_providers import (
     ExecutiveContextContribution,
     ExecutiveContextSnapshot,
 )
+from gateway.executive_context_repository import (
+    ExecutiveContextRecord,
+    ExecutiveContextResolver,
+    InMemoryExecutiveContextRepository,
+)
 from gateway.executive_intelligence import (
     BackToBackLoadModule,
     CommitmentDueModule,
@@ -490,18 +495,39 @@ class RecordingAgent:
 def test_orchestrator_receives_intelligence_without_external_calls(monkeypatch) -> None:
     monkeypatch.setenv("HERMES_EXECUTIVE_CONTEXT_PROVIDER_FRAMEWORK_ENABLED", "true")
     monkeypatch.setenv("HERMES_EXECUTIVE_INTELLIGENCE_ENABLED", "true")
-    synthetic_snapshot = _synthetic_acceptance_snapshot()
-
-    class SyntheticCollectionService:
-        def collect(self, **kwargs):  # noqa: ANN001
-            return synthetic_snapshot
-
-    import gateway.executive_context_providers as context_providers
-
-    monkeypatch.setattr(
-        context_providers,
-        "build_default_context_collection_service",
-        lambda: SyntheticCollectionService(),
+    repository = InMemoryExecutiveContextRepository(
+        records=(
+            ExecutiveContextRecord(
+                record_id="ovos.executive_event_journal:meeting-a",
+                category="operational",
+                source_table="ovos.executive_event_journal",
+                source_ref="meeting-a",
+                title="Internal planning",
+                summary="Internal planning; start=2026-07-29T09:00:00+01:00; end=2026-07-29T10:00:00+01:00",
+                metadata={
+                    "context_type": "meeting",
+                    "start": "2026-07-29T09:00:00+01:00",
+                    "end": "2026-07-29T10:00:00+01:00",
+                    "title": "Internal planning",
+                    "status": "confirmed",
+                    "response_status": "accepted",
+                },
+            ),
+            ExecutiveContextRecord(
+                record_id="ovos.conversation_signals:commitment-due",
+                category="operational",
+                source_table="ovos.conversation_signals",
+                source_ref="commitment-due",
+                title="Commitment due",
+                summary="Commitment due today",
+                metadata={
+                    "context_type": "commitment",
+                    "due_at": "2026-07-29T17:00:00+01:00",
+                    "status": "open",
+                    "owner_id": USER,
+                },
+            ),
+        )
     )
     agent = RecordingAgent()
     sink = InMemoryExecutiveTraceSink()
@@ -512,7 +538,7 @@ def test_orchestrator_receives_intelligence_without_external_calls(monkeypatch) 
         actor_name="Nitin",
         platform="local_diagnostic",
         chat_id=None,
-        message="What does my day look like?",
+        message="What meetings do I have today?",
     )
 
     result = run_reasoning_with_optional_orchestrator(
@@ -523,7 +549,10 @@ def test_orchestrator_receives_intelligence_without_external_calls(monkeypatch) 
         provider="custom",
         model="gpt-4.1-mini",
         enabled=True,
-        orchestrator=ExecutiveOrchestrator(trace_sink=sink),
+        orchestrator=ExecutiveOrchestrator(
+            context_resolver=ExecutiveContextResolver(repository=repository),
+            trace_sink=sink,
+        ),
     )
 
     assert result.prepared is not None
