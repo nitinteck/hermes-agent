@@ -26,6 +26,21 @@ reviewing any change:
   high. Most new capability should arrive as a CLI command + skill, a
   service-gated tool, or a plugin — not as core surface.
 
+## Executive Data Platform Living Documents
+
+Every Hermes EDP milestone must update these living documents before it is
+ready for review:
+
+- `docs/architecture/HERMES-ROADMAP.md`
+- `docs/architecture/HERMES-ARCHITECTURE-CONSTITUTION.md`
+- `docs/architecture/HERMES-DECISION-LOG.md`
+- `docs/architecture/HERMES-TECHNICAL-DEBT-REGISTER.md`
+
+The guiding mindset is: optimise for long-term architecture, not for preserving
+historical pull requests. Preserve contributor work when it aligns with the
+target architecture, but do not preserve obsolete local authority, duplicated
+state, or superseded implementation models for their own sake.
+
 ## Contribution Rubric — What We Want / What We Don't
 
 This is the project's intent layer. Use it two ways:
