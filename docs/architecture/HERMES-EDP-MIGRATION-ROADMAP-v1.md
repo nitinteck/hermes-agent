@@ -14,18 +14,20 @@ Status: staged plan. No migration has been applied.
 
 ## Stage 1: Tenancy, Identity, RLS, Audit Foundation
 
-- Schema: `identity.tenants`, `users`, `tenant_memberships`, roles,
-  permissions, `audit.audit_events`.
+- Schema: reuse Supabase Auth and existing OVOS tenant columns; add the minimal
+  `ovos.edp_tenant_memberships` bridge and reuse
+  `ovos.executive_event_journal` for bounded governance audit.
 - Application: map current default tenant/owner config to explicit records.
-- Migration: create new schemas/tables; do not move business facts yet.
+- Migration: additive OVOS schema changes; do not move business facts yet.
 - Backfill: current configured tenant/owner only after backup.
 - Rollback: additive schema rollback before data dependency.
 - Gates: RLS tests, service-role RPC tests, cross-tenant negative tests.
 
 ## Stage 2: Capability Truth And Governance
 
-- Schema: `governance.capability_truth`, `policy_decisions`,
-  `improvement_proposals`.
+- Schema: reuse `ovos.ede_capabilities`, add
+  `ovos.edp_capability_overlays`, and persist durable
+  `ovos.edp_improvement_proposals`.
 - Application: PR #18 deterministic baseline reads DB overlays but fails closed.
 - Dual-read: code baseline plus DB overlay.
 - Rollback: disable DB overlay flag.
