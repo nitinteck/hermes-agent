@@ -1,10 +1,17 @@
 # Hermes Canonical Domain Model v1
 
-Status: target model. This is not a migration.
+Status: target model. Slice 3 implements the Business Knowledge subset.
 
 The model below favours canonical relational records with JSONB only for
 bounded, versioned extension payloads. Existing `ovos` tables should be reused
 or migrated incrementally where they already satisfy the contract.
+
+Slice 3 implements the `knowledge.business_*` subset in the private `ovos`
+schema as `ovos.business_sources`, `ovos.business_evidence`,
+`ovos.business_entities`, `ovos.business_entity_relationships`,
+`ovos.business_facts`, `ovos.business_fact_evidence`,
+`ovos.business_reviews`, `ovos.business_import_batches`, and
+`ovos.business_import_candidates`.
 
 ## Schema Map
 
