@@ -12,10 +12,11 @@ import json
 import os
 import re
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
+from gateway.executive_context_repository import ExecutiveContextResolver
 from utils import is_truthy_value
 
 
@@ -309,7 +310,6 @@ def get_default_executive_orchestrator() -> ExecutiveOrchestrator:
                 / "executive_orchestrator_traces.jsonl"
             )
         _DEFAULT_ORCHESTRATOR = ExecutiveOrchestrator(
-            context_provider=LocalHermesExecutiveContextProvider(),
             trace_sink=JsonlExecutiveTraceSink(trace_path),
         )
     return _DEFAULT_ORCHESTRATOR
@@ -404,6 +404,9 @@ def run_reasoning_with_optional_orchestrator(
             "no_execution_confirmed": True,
             "warnings": merged_warnings,
             "context_provider_snapshot": _context_provider_snapshot(prepared),
+            "executive_context_repository": _executive_context_repository_snapshot(
+                prepared
+            ),
             "intelligence_snapshot": _intelligence_snapshot(prepared),
             "reasoning_plan": dict(prepared.reasoning_plan),
             "response_plan": dict(prepared.response_plan),
@@ -421,10 +424,12 @@ class ExecutiveOrchestrator:
         self,
         *,
         context_provider: ExecutiveContextProvider | None = None,
+        context_resolver: ExecutiveContextResolver | None = None,
         trace_sink: ExecutiveTraceSink | None = None,
         limits: ExecutiveContextLimits | None = None,
     ) -> None:
         self.context_provider = context_provider or NoopExecutiveContextProvider()
+        self.context_resolver = context_resolver or ExecutiveContextResolver()
         self.trace_sink = trace_sink or InMemoryExecutiveTraceSink()
         self.limits = limits or ExecutiveContextLimits()
 
@@ -464,40 +469,29 @@ class ExecutiveOrchestrator:
             )
 
         warnings: list[str] = []
-        provider_snapshot = _context_provider_snapshot_from_trace(turn.trace_metadata)
-        snapshot_warnings = provider_snapshot.get("warnings")
-        if isinstance(snapshot_warnings, list):
-            warnings.extend(
-                f"context_provider:{_safe_label(str(warning))}"
-                for warning in snapshot_warnings
-            )
-        try:
-            raw_context = self.context_provider.collect(turn, self.limits)
-            raw_context = _merge_context(raw_context, turn.runtime_context)
-        except Exception:
-            if classification in {"unsupported_or_unsafe", "potentially_executable"}:
-                raise OrchestratorError(
-                    "context provider unavailable for safety-sensitive request",
-                    classification=classification,
-                    safe_response=(
-                        "Executive context and safety checks are unavailable, so this "
-                        "request is blocked instead of being treated as executable."
-                    ),
-                    correlation_id=correlation_id,
-                ) from None
-            raw_context = {}
-            warnings.append("context_provider_unavailable")
-
-        bounded = _bound_context(raw_context, self.limits)
-        context_text = _render_context(bounded, self.limits.max_context_chars)
-        evidence_refs = tuple(
-            item.reference_id
-            for items in bounded.values()
-            for item in items
-            if item.reference_id
+        executive_context = self.context_resolver.resolve(
+            turn=turn,
+            request_classification=classification,
+            correlation_id=correlation_id,
+            limits=self.limits,
+            environment=os.getenv("HERMES_ENVIRONMENT")
+            or os.getenv("ENVIRONMENT")
+            or os.getenv("APP_ENV"),
         )
-        context_digest = _digest(context_text)
-        counts = {name: len(items) for name, items in sorted(bounded.items())}
+        context_text = executive_context.render_for_reasoning(
+            max_chars=self.limits.max_context_chars
+        )
+        evidence_refs = executive_context.evidence_ids()
+        context_digest = executive_context.context_digest
+        counts = dict(executive_context.source_counts)
+        warnings.extend(executive_context.warnings)
+        trace_metadata = dict(turn.trace_metadata)
+        trace_metadata["executive_context_repository"] = (
+            executive_context.to_safe_dict()
+        )
+        trace_metadata["executive_context_snapshot"] = (
+            executive_context.to_provider_snapshot().safe_trace_metadata()
+        )
         safety_state = (
             "execution_unavailable_not_executed"
             if classification in {"planning_request", "approval_related"}
@@ -508,6 +502,42 @@ class ExecutiveOrchestrator:
         planning_snapshot: Mapping[str, Any] = {"status": "not_eligible"}
         rendered_reasoning_plan = ""
         rendered_planning_snapshot = ""
+        rendered_intelligence = ""
+        if _context_provider_framework_enabled():
+            try:
+                from gateway.executive_intelligence import (
+                    IntelligenceSelectionRequest,
+                    build_default_intelligence_engine,
+                    is_executive_intelligence_enabled,
+                    render_intelligence_snapshot_for_reasoning,
+                )
+
+                if is_executive_intelligence_enabled():
+                    intelligence_snapshot = build_default_intelligence_engine().run(
+                        IntelligenceSelectionRequest(
+                            tenant_id=turn.tenant_id,
+                            user_id=turn.actor_id,
+                            request_classification=classification,
+                            ranking_profile=_ranking_profile_for_classification(
+                                classification
+                            ),
+                            context_snapshot=executive_context.to_provider_snapshot(),
+                            max_signals=12,
+                        )
+                    )
+                    rendered_intelligence = render_intelligence_snapshot_for_reasoning(
+                        intelligence_snapshot,
+                        max_chars=max(600, self.limits.max_context_chars // 3),
+                    )
+                    trace_metadata["executive_intelligence_snapshot"] = (
+                        intelligence_snapshot.safe_trace_metadata()
+                    )
+                    counts["executive_intelligence"] = 1
+            except Exception:
+                trace_metadata["executive_intelligence_warning"] = (
+                    "intelligence_unavailable"
+                )
+                warnings.append("executive_intelligence_unavailable")
         if _executive_reasoning_enabled():
             try:
                 from gateway.executive_reasoning import (
@@ -526,7 +556,7 @@ class ExecutiveOrchestrator:
                         context_source_counts=counts,
                         evidence_refs=evidence_refs,
                         safety_state=safety_state,
-                        trace_metadata=dict(turn.trace_metadata),
+                        trace_metadata=trace_metadata,
                     )
                 )
                 reasoning_plan = reasoning_result.reasoning_plan.safe_trace()
@@ -549,7 +579,7 @@ class ExecutiveOrchestrator:
                             actor_id=turn.actor_id,
                             context_source_counts=counts,
                             evidence_refs=evidence_refs,
-                            trace_metadata=dict(turn.trace_metadata),
+                            trace_metadata=trace_metadata,
                             safety_state=safety_state,
                         )
                     )
@@ -592,6 +622,7 @@ class ExecutiveOrchestrator:
             correlation_id,
             rendered_reasoning_plan,
             rendered_planning_snapshot,
+            rendered_intelligence,
         )
         prepared = PreparedExecutiveTurn(
             correlation_id=correlation_id,
@@ -608,7 +639,7 @@ class ExecutiveOrchestrator:
             safety_state=safety_state,
             reasoning_instructions=instructions,
             reasoning_message=reasoning_message,
-            trace_metadata=dict(turn.trace_metadata),
+            trace_metadata=trace_metadata,
             context_digest=context_digest,
             reasoning_plan=reasoning_plan,
             response_plan=response_plan,
@@ -648,6 +679,9 @@ class ExecutiveOrchestrator:
             "context_source_counts": dict(prepared.context_source_counts),
             "evidence_refs": list(prepared.evidence_refs),
             "context_provider_snapshot": _context_provider_snapshot(prepared),
+            "executive_context_repository": _executive_context_repository_snapshot(
+                prepared
+            ),
             "executive_intelligence_snapshot": _intelligence_snapshot(prepared),
             "reasoning_plan": dict(prepared.reasoning_plan),
             "response_plan": dict(prepared.response_plan),
@@ -675,6 +709,9 @@ class ExecutiveOrchestrator:
             "context_source_counts": dict(prepared.context_source_counts),
             "evidence_refs": list(prepared.evidence_refs),
             "context_provider_snapshot": _context_provider_snapshot(prepared),
+            "executive_context_repository": _executive_context_repository_snapshot(
+                prepared
+            ),
             "executive_intelligence_snapshot": _intelligence_snapshot(prepared),
             "reasoning_plan": dict(prepared.reasoning_plan),
             "response_plan": dict(prepared.response_plan),
@@ -709,6 +746,9 @@ class ExecutiveOrchestrator:
             "context_digest": prepared.context_digest,
             "context_source_counts": dict(prepared.context_source_counts),
             "context_provider_snapshot": _context_provider_snapshot(prepared),
+            "executive_context_repository": _executive_context_repository_snapshot(
+                prepared
+            ),
             "executive_intelligence_snapshot": _intelligence_snapshot(prepared),
             "reasoning_plan": dict(prepared.reasoning_plan),
             "response_plan": dict(prepared.response_plan),
@@ -757,6 +797,9 @@ class ExecutiveOrchestrator:
             "context_digest": context_digest,
             "context_source_counts": dict(context_source_counts or {}),
             "context_provider_snapshot": _context_provider_snapshot_from_trace(
+                turn.trace_metadata
+            ),
+            "executive_context_repository": _executive_context_repository_from_trace(
                 turn.trace_metadata
             ),
             "executive_intelligence_snapshot": _intelligence_snapshot_from_trace(
@@ -927,106 +970,8 @@ def _with_runtime_context(
     conversation_kwargs: Mapping[str, Any],
     limits: ExecutiveContextLimits | None = None,
 ) -> ExecutiveTurnInput:
-    runtime_context = dict(turn.runtime_context)
-    trace_metadata = dict(turn.trace_metadata)
-    if _context_provider_framework_enabled():
-        try:
-            from gateway.executive_context_providers import (
-                build_default_context_collection_service,
-            )
-
-            classification = classify_request(_normalize_message(turn.message))
-            snapshot = build_default_context_collection_service().collect(
-                turn=turn,
-                request_classification=classification,
-                limits=limits or ExecutiveContextLimits(),
-                conversation_history=conversation_kwargs.get("conversation_history")
-                or (),
-                agent=agent,
-            )
-            intelligence_snapshot = None
-            try:
-                from gateway.executive_intelligence import (
-                    IntelligenceSelectionRequest,
-                    build_default_intelligence_engine,
-                    is_executive_intelligence_enabled,
-                    render_intelligence_snapshot_for_reasoning,
-                )
-
-                if is_executive_intelligence_enabled():
-                    intelligence_snapshot = build_default_intelligence_engine().run(
-                        IntelligenceSelectionRequest(
-                            tenant_id=turn.tenant_id,
-                            user_id=turn.actor_id,
-                            request_classification=classification,
-                            ranking_profile=_ranking_profile_for_classification(
-                                classification
-                            ),
-                            context_snapshot=snapshot,
-                            max_signals=12,
-                        )
-                    )
-                    rendered_intelligence = render_intelligence_snapshot_for_reasoning(
-                        intelligence_snapshot,
-                        max_chars=max(
-                            600,
-                            (limits or ExecutiveContextLimits()).max_context_chars // 3,
-                        ),
-                    )
-                    runtime_context["executive_intelligence"] = (
-                        ContextItem(
-                            source="executive_intelligence",
-                            reference_id=intelligence_snapshot.snapshot_digest,
-                            title="Executive Intelligence Snapshot",
-                            summary=rendered_intelligence,
-                        ),
-                    )
-                    trace_metadata["executive_intelligence_snapshot"] = (
-                        intelligence_snapshot.safe_trace_metadata()
-                    )
-            except Exception:
-                trace_metadata["executive_intelligence_warning"] = (
-                    "intelligence_unavailable"
-                )
-            runtime_context.update(snapshot.to_context_items())
-            trace_metadata["executive_context_snapshot"] = (
-                snapshot.safe_trace_metadata()
-            )
-        except Exception:
-            trace_metadata["executive_context_provider_framework_warning"] = (
-                "collection_unavailable"
-            )
-    conversation_items = _recent_conversation_context_items(
-        conversation_kwargs.get("conversation_history")
-    )
-    if conversation_items and "recent_conversation" not in runtime_context:
-        runtime_context["recent_conversation"] = tuple(conversation_items)
-    profile_item = _persistent_profile_context_item(agent)
-    if profile_item is not None and "persistent_profile" not in runtime_context:
-        runtime_context["persistent_profile"] = (profile_item,)
-    if "current_request_metadata" not in runtime_context:
-        runtime_context["current_request_metadata"] = (
-            ContextItem(
-                source="current_request_metadata",
-                reference_id=f"current_request:{_digest(_normalize_message(turn.message))[:12]}",
-                title="Current request metadata",
-                summary=(
-                    f"platform={_safe_label(turn.platform)} "
-                    f"actor_digest={_digest(turn.actor_id)[:12]} "
-                    f"message_digest={_digest(_normalize_message(turn.message))[:16]}"
-                ),
-            ),
-        )
-    if turn.deterministic_command_result:
-        runtime_context["deterministic_output"] = (
-            ContextItem(
-                source="deterministic_output",
-                reference_id=f"deterministic:{_digest(turn.deterministic_command_result)[:12]}",
-                title="Deterministic command output",
-                summary="Deterministic command output was supplied separately and labelled as evidence.",
-            ),
-        )
-    return replace(turn, runtime_context=runtime_context, trace_metadata=trace_metadata)
+    del agent, conversation_kwargs, limits
+    return turn
 
 
 def _recent_conversation_context_items(value: Any) -> list[ContextItem]:
@@ -1094,6 +1039,21 @@ def _context_provider_snapshot(prepared: PreparedExecutiveTurn) -> Mapping[str, 
 
 def _intelligence_snapshot(prepared: PreparedExecutiveTurn) -> Mapping[str, Any]:
     return _intelligence_snapshot_from_trace(prepared.trace_metadata)
+
+
+def _executive_context_repository_snapshot(
+    prepared: PreparedExecutiveTurn,
+) -> Mapping[str, Any]:
+    return _executive_context_repository_from_trace(prepared.trace_metadata)
+
+
+def _executive_context_repository_from_trace(
+    trace_metadata: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    value = trace_metadata.get("executive_context_repository")
+    if isinstance(value, Mapping):
+        return dict(value)
+    return {}
 
 
 def _intelligence_snapshot_from_trace(
@@ -1202,6 +1162,7 @@ def _build_reasoning_message(
     correlation_id: str,
     rendered_reasoning_plan: str = "",
     rendered_planning_snapshot: str = "",
+    rendered_intelligence: str = "",
 ) -> str:
     sections = [
         "EXECUTIVE ORCHESTRATOR CONTEXT",
@@ -1214,6 +1175,11 @@ def _build_reasoning_message(
         "",
         context,
     ]
+    if rendered_intelligence:
+        sections.extend([
+            "",
+            rendered_intelligence,
+        ])
     if rendered_reasoning_plan:
         sections.extend([
             "",

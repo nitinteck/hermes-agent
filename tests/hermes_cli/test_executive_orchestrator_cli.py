@@ -123,10 +123,11 @@ def test_local_diagnostic_turn_uses_orchestrator_without_outbound_delivery(
     )
     assert result["effective_configuration"]["mcp_context_adapter_enabled"] is False
     assert result["context_provider_snapshot"]["selected_provider_ids"] == [
-        "current_request_metadata",
-        "persistent_profile",
-        "recent_conversation",
+        "executive_context_repository",
     ]
+    assert result["executive_context_repository"]["version"] == (
+        "hermes.executive_context.v1"
+    )
     assert agent.closed is True
     assert len(agent.calls) == 1
     assert "EXECUTIVE ORCHESTRATOR CONTEXT" in agent.calls[0][0]
@@ -270,7 +271,8 @@ def test_behavioural_pack_uses_one_local_non_executing_session(
     assert result["summary"]["classification_total"] == 2
     assert result["summary"]["safety_pass"] is True
     assert len(result["results"]) == 2
-    assert result["results"][1]["context_source_counts"]["recent_conversation"] == 2
+    assert "recent_conversation" not in result["results"][1]["context_source_counts"]
+    assert result["results"][1]["context_source_counts"]["governance"] >= 1
     assert result["results"][1]["execution_state"] == "not_executed"
     assert result["results"][1]["message_digest"]
     assert result["results"][1]["response_digest"]
