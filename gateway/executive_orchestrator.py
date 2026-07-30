@@ -373,6 +373,12 @@ def run_reasoning_with_optional_orchestrator(
         **dict(conversation_kwargs),
     )
     result = _enforce_non_execution_response(result)
+    result = _sanitize_user_channel_response(
+        result,
+        request=prepared.normalized_user_request,
+        channel=turn.platform,
+        correlation_id=prepared.correlation_id,
+    )
     elapsed_ms = int((time.monotonic() - started) * 1000)
     observation = active_orchestrator.observe_response(
         prepared,
@@ -412,6 +418,9 @@ def run_reasoning_with_optional_orchestrator(
             "response_plan": dict(prepared.response_plan),
             "planning_snapshot": dict(prepared.planning_snapshot),
         }
+        for key in ("disclosure_decision", "improvement_proposal"):
+            if key in existing_meta:
+                result["executive_orchestrator"][key] = existing_meta[key]
     return OrchestratedReasoningResult(
         result=result,
         prepared=prepared,
@@ -886,6 +895,19 @@ def _is_external_action_request(text: str) -> bool:
     if _contains_any(
         text,
         (
+            "decision plan",
+            "compare calendar",
+            "comparing calendar",
+            "review integration options",
+            "should we add read-only",
+            "stabilise whatsapp",
+            "recommend a path",
+        ),
+    ):
+        return False
+    if _contains_any(
+        text,
+        (
             "run shell",
             "execute shell",
             "subprocess",
@@ -901,6 +923,8 @@ def _is_external_action_request(text: str) -> bool:
     executable_patterns = (
         r"\bsend\b.+\b(email|message|whatsapp)\b",
         r"\bemail\b.+\bsaying\b",
+        r"\bconnect\b.+\b(gmail|calendar|clickup)\b",
+        r"\bread\b.+\b(gmail|calendar|clickup)\b",
         r"\bcreate\b.+\b(clickup|task|calendar|event|meeting)\b",
         r"\b(schedule|book)\b.+\b(meeting|calendar|event)\b",
         r"\bmust\b.+\b(schedule|create|send|email)\b",
@@ -942,11 +966,14 @@ def _is_executive_status_request(text: str) -> bool:
 def _is_decision_support_request(text: str) -> bool:
     if "what should i use you for" in text:
         return False
+    if "decision plan" in text or "create a decision plan" in text:
+        return False
     return _contains_any(
         text,
         (
             "should we",
             "should i",
+            "compare",
             "recommend",
             "decide",
             "decision",
@@ -960,6 +987,17 @@ def _is_decision_support_request(text: str) -> bool:
 def _is_planning_request(text: str) -> bool:
     if "what should i use you for" in text:
         return False
+    if _contains_any(
+        text,
+        (
+            "create a decision plan",
+            "decision plan",
+            "design a rollout",
+            "review integration options",
+            "propose a low-risk implementation path",
+        ),
+    ):
+        return True
     return _contains_any(text, ("plan", "roadmap", "milestone"))
 
 
@@ -1294,6 +1332,99 @@ def _enforce_non_execution_response(result: Mapping[str, Any]) -> Mapping[str, A
         existing["warnings"].append("misleading_execution_claim_rewritten")
     rewritten["executive_orchestrator"] = existing
     return rewritten
+
+
+_RESTRICTED_RESPONSE_PATTERNS = (
+    re.compile(r"\b(GatewayRunner|ExecutiveOrchestrator|AIAgent)\b"),
+    re.compile(r"\b(_handle_message|prepare_turn|observe_response|run_conversation)\b"),
+    re.compile(r"(/opt/ai-stack|/Users/|gateway/[A-Za-z0-9_./-]+\.py|hermes_cli/[A-Za-z0-9_./-]+\.py)"),
+    re.compile(r"\b(trace|eo)_[a-f0-9]{6,}\b"),
+    re.compile(r"\b[0-9a-f]{12,40}\b"),
+    re.compile(r"\bHERMES_[A-Z0-9_]+\b"),
+    re.compile(r"\b(system prompt|trusted orchestration instructions)\b", re.I),
+    re.compile(r"\b(execution_boundary|capability registry)\b", re.I),
+)
+
+
+def _sanitize_user_channel_response(
+    result: Mapping[str, Any],
+    *,
+    request: str,
+    channel: str,
+    correlation_id: str,
+) -> Mapping[str, Any]:
+    if not isinstance(result, Mapping):
+        return result
+    if channel not in {"whatsapp", "whatsapp_cloud"}:
+        return result
+    original = str(result.get("final_response") or "")
+    sanitized = _redact_secrets(original)
+    warnings: list[str] = []
+    disclosure_action = "allow"
+    improvement_proposal: Mapping[str, Any] | None = None
+
+    if _looks_like_self_improvement_mutation(sanitized):
+        warnings.append("self_improvement_quarantined")
+        disclosure_action = "sanitize"
+        improvement_proposal = {
+            "proposal_id": f"iprop_{_digest(correlation_id + '|' + sanitized)[:16]}",
+            "trigger_request_id": correlation_id,
+            "proposal_type": "self_improvement_quarantine",
+            "review_status": "proposed",
+            "approval_status": "not_requested",
+            "application_status": "not_applied",
+            "direct_mutation_performed": False,
+            "execution_status": "not_executed",
+        }
+        sanitized = (
+            "I have noted a possible improvement for owner review. I have not "
+            "changed memory, skills, prompts, routing, or behaviour."
+        )
+    elif any(pattern.search(sanitized) for pattern in _RESTRICTED_RESPONSE_PATTERNS):
+        warnings.append("ip_disclosure_sanitized")
+        disclosure_action = "sanitize"
+        sanitized = (
+            "Hermes can help with planning, capability checks, and executive "
+            "context questions. I can explain user-facing behaviour plainly, "
+            "but I cannot share internal implementation details in WhatsApp."
+        )
+
+    if sanitized == original and not warnings:
+        return result
+    rewritten = dict(result)
+    rewritten["final_response"] = sanitized
+    existing = dict(rewritten.get("executive_orchestrator") or {})
+    merged_warnings = list(existing.get("warnings") or [])
+    merged_warnings.extend(warnings)
+    existing["warnings"] = list(dict.fromkeys(merged_warnings))
+    existing["execution_state"] = "not_executed"
+    existing["no_execution_confirmed"] = True
+    existing["disclosure_decision"] = {
+        "channel": channel,
+        "action": disclosure_action,
+        "disclosure_class": "user_safe",
+    }
+    if improvement_proposal is not None:
+        existing["improvement_proposal"] = dict(improvement_proposal)
+    rewritten["executive_orchestrator"] = existing
+    return rewritten
+
+
+def _looks_like_self_improvement_mutation(text: str) -> bool:
+    folded = text.casefold()
+    return any(
+        marker in folded
+        for marker in (
+            "self-improvement review",
+            "user profile updated",
+            "skill created",
+            "skill updated",
+            "full rewrite",
+            "prompt updated",
+            "routing updated",
+            "policy updated",
+        )
+    )
 
 
 def _event_id(record: Mapping[str, Any]) -> str:

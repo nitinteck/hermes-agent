@@ -40,6 +40,31 @@ class ImmediateThread:
         self._target()
 
 
+def test_background_review_direct_mutation_is_disabled_by_default(monkeypatch):
+    events = []
+
+    class FakeReviewAgent:
+        def __init__(self, **kwargs):
+            events.append(("init", kwargs))
+
+        def run_conversation(self, **kwargs):
+            events.append(("run_conversation", kwargs))
+
+    monkeypatch.setattr(run_agent_module, "AIAgent", FakeReviewAgent)
+    monkeypatch.setattr(run_agent_module.threading, "Thread", ImmediateThread)
+
+    agent = _bare_agent()
+    agent.self_improvement_direct_mutation_enabled = False
+
+    AIAgent._spawn_background_review(
+        agent,
+        messages_snapshot=[{"role": "user", "content": "hello"}],
+        review_memory=True,
+    )
+
+    assert events == []
+
+
 def test_background_review_shuts_down_memory_provider_before_close(monkeypatch):
     events = []
 

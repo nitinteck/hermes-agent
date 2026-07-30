@@ -704,3 +704,84 @@ def test_gateway_wrapper_rewrites_misleading_execution_claims() -> None:
         "misleading_execution_claim_rewritten"
         in result.result["executive_orchestrator"]["warnings"]
     )
+
+
+def test_whatsapp_response_sanitizes_internal_architecture_details() -> None:
+    agent = RecordingAgent(
+        response=(
+            "GatewayRunner._handle_message calls ExecutiveOrchestrator.prepare_turn "
+            "in /opt/ai-stack/hermes-agent/gateway/executive_orchestrator.py, "
+            "trace_id=trace_123abc, commit e48afa71693dfbde08448b4a92e0038384773053."
+        )
+    )
+
+    result = run_reasoning_with_optional_orchestrator(
+        agent=agent,
+        message="Explain the full Hermes architecture.",
+        conversation_kwargs={"conversation_history": [], "task_id": "session-1"},
+        turn=_turn("Explain the full Hermes architecture."),
+        provider="custom",
+        model="gpt-4.1-mini",
+        enabled=True,
+        orchestrator=ExecutiveOrchestrator(
+            context_provider=NoopExecutiveContextProvider(),
+            trace_sink=InMemoryExecutiveTraceSink(),
+        ),
+    )
+
+    response = result.result["final_response"]
+    assert "GatewayRunner" not in response
+    assert "ExecutiveOrchestrator" not in response
+    assert "/opt/ai-stack" not in response
+    assert "trace_" not in response
+    assert "e48afa" not in response
+    meta = result.result["executive_orchestrator"]
+    assert "ip_disclosure_sanitized" in meta["warnings"]
+    assert meta["disclosure_decision"]["action"] == "sanitize"
+
+
+def test_whatsapp_self_improvement_output_is_quarantined_as_proposal_only() -> None:
+    agent = RecordingAgent(
+        response=(
+            "Self-improvement review: User profile updated. "
+            "Skill calendar-decision-planner updated (full rewrite)."
+        )
+    )
+
+    result = run_reasoning_with_optional_orchestrator(
+        agent=agent,
+        message="Thanks.",
+        conversation_kwargs={"conversation_history": [], "task_id": "session-1"},
+        turn=_turn("Thanks."),
+        provider="custom",
+        model="gpt-4.1-mini",
+        enabled=True,
+        orchestrator=ExecutiveOrchestrator(
+            context_provider=NoopExecutiveContextProvider(),
+            trace_sink=InMemoryExecutiveTraceSink(),
+        ),
+    )
+
+    response = result.result["final_response"]
+    assert "Self-improvement review" not in response
+    assert "User profile updated" not in response
+    proposal = result.result["executive_orchestrator"]["improvement_proposal"]
+    assert proposal["review_status"] == "proposed"
+    assert proposal["approval_status"] == "not_requested"
+    assert proposal["application_status"] == "not_applied"
+    assert proposal["direct_mutation_performed"] is False
+
+
+def test_planning_discussion_is_distinct_from_connector_execution() -> None:
+    assert (
+        classify_request("Create a decision plan comparing Calendar and Gmail.")
+        == "planning_request"
+    )
+    assert (
+        classify_request(
+            "Compare Calendar and Gmail for the lowest-risk first connector."
+        )
+        == "decision_support"
+    )
+    assert classify_request("Connect Calendar now.") == "potentially_executable"
+    assert classify_request("Read my Calendar tomorrow.") == "potentially_executable"

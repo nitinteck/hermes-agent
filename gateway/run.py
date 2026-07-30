@@ -20640,6 +20640,11 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             if isinstance(_mem_notif, bool):
                 _mem_notif = "on" if _mem_notif else "off"
             agent.memory_notifications = str(_mem_notif).lower() if _mem_notif else "on"
+            _platform_value = source.platform.value if source.platform else ""
+            if _platform_value in {"whatsapp", "whatsapp_cloud"}:
+                agent.memory_notifications = "off"
+                agent.background_review_callback = None
+                agent.self_improvement_direct_mutation_enabled = False
 
             # ------------------------------------------------------------------
             # Clarify callback: present a clarify prompt and block on a response.
