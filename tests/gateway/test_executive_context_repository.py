@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+import json
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -12,6 +14,7 @@ from gateway.executive_context_repository import (
     ExecutiveContextRepositoryError,
     ExecutiveContextResolver,
     InMemoryExecutiveContextRepository,
+    SupabaseExecutiveContextRepository,
 )
 from gateway.executive_orchestrator import ExecutiveContextLimits, ExecutiveTurnInput
 
@@ -248,3 +251,52 @@ def test_repository_unavailable_exception_is_not_silently_successful() -> None:
             correlation_id="corr-8",
             limits=ExecutiveContextLimits(),
         )
+
+
+def test_supabase_repository_uses_ovos_schema_and_tenant_filters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_requests = []
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps([]).encode("utf-8")
+
+    def _urlopen(request, timeout):  # noqa: ANN001
+        del timeout
+        captured_requests.append(request)
+        return _Response()
+
+    monkeypatch.setattr(
+        "gateway.executive_context_repository.urllib.request.urlopen",
+        _urlopen,
+    )
+    repository = SupabaseExecutiveContextRepository(
+        supabase_url="https://example.supabase.co",
+        api_key="anon-key",
+        bearer_token="user-token",
+        governance_repository=InMemoryGovernanceRepository(),
+    )
+
+    repository.load(
+        tenant_context=_tenant(),
+        actor_id=ACTOR_ID,
+        request_classification="executive_status",
+        correlation_id="corr-supabase",
+        limits=ExecutiveContextLimits(max_brief_items=1, max_decisions=1),
+    )
+
+    assert captured_requests
+    first = captured_requests[0]
+    assert first.headers["Accept-profile"] == "ovos"
+    parsed = urlparse(first.full_url)
+    assert parsed.path == "/rest/v1/executive_identities"
+    query = parse_qs(parsed.query)
+    assert query["tenant_id"] == [f"eq.{TENANT_ID}"]
+    assert query["owner_user_id"] == [f"eq.{ACTOR_ID}"]

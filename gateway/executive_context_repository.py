@@ -770,6 +770,7 @@ class SupabaseExecutiveContextRepository:
             headers={
                 "apikey": self._api_key,
                 "Authorization": f"Bearer {self._bearer_token}",
+                "Accept-Profile": "ovos",
                 "Accept": "application/json",
                 "User-Agent": "hermes-agent-executive-context-repository/1",
             },
