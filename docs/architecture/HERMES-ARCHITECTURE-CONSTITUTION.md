@@ -111,6 +111,24 @@ existing table is not the canonical shape for the domain.
   strategy, finance, legal, HR, private staff information, internal decisions,
   restricted Business Knowledge, or another customer's data.
 
+## Conversation Rules
+
+- Conversation Engine may classify intent and build a transient working set.
+- The working set is bounded, request-time or short conversation-scoped, and
+  reconstructable from recent conversation context.
+- The working set is not durable Executive State and must not become a
+  competing canonical database.
+- Planning, drafting, preparation and capability questions must not be treated
+  as execution requests.
+- Ambiguous action language defaults to preparation or clarification, not
+  execution.
+- Facts, user assumptions, assistant inferences and unknowns must remain
+  distinct in the internal response contract.
+- No final response may claim an external action occurred without a verified
+  execution receipt.
+- Refusals should be brief and continue with permitted preparation when the
+  user's intent is clear.
+
 ## Product Launch Rules
 
 Customer-facing assistants must not go live until the relevant Business

@@ -12,10 +12,29 @@ import json
 import os
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 
+from gateway.executive_conversation import (
+    ConversationIntent,
+    ConversationIntentCategory,
+    ConversationWorkingSet,
+    EvidenceSummaryBuilder,
+    ExecutionClaimGuard,
+    ExecutionGuardResult,
+    ExecutionTruthState,
+    ExecutiveContextGrounding,
+    ExecutiveContextGroundingBuilder,
+    ExecutiveResponseContract,
+    RefusalAlternativeBuilder,
+    WorkingSetBuilder,
+    build_conversation_diagnostics,
+    classify_conversation_intent,
+    legacy_request_classification,
+    render_conversation_context_for_prompt,
+    summarise_recent_conversation,
+)
 from gateway.executive_context_repository import ExecutiveContextResolver
 from utils import is_truthy_value
 
@@ -85,6 +104,11 @@ class PreparedExecutiveTurn:
     reasoning_plan: Mapping[str, Any] = field(default_factory=dict)
     response_plan: Mapping[str, Any] = field(default_factory=dict)
     planning_snapshot: Mapping[str, Any] = field(default_factory=dict)
+    conversation_intent: Mapping[str, Any] = field(default_factory=dict)
+    conversation_working_set: Mapping[str, Any] = field(default_factory=dict)
+    executive_context_grounding: Mapping[str, Any] = field(default_factory=dict)
+    evidence_contract: Mapping[str, Any] = field(default_factory=dict)
+    conversation_diagnostics: Mapping[str, Any] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
 
 
@@ -120,6 +144,7 @@ class OrchestratorError(RuntimeError):
         execution_state: str = "not_executed",
         correlation_id: str | None = None,
         trace_id: str | None = None,
+        conversation_diagnostics: Mapping[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.classification = classification
@@ -127,6 +152,7 @@ class OrchestratorError(RuntimeError):
         self.execution_state = execution_state
         self.correlation_id = correlation_id
         self.trace_id = trace_id
+        self.conversation_diagnostics = dict(conversation_diagnostics or {})
 
 
 class ExecutiveContextProvider(Protocol):
@@ -356,6 +382,7 @@ def run_reasoning_with_optional_orchestrator(
                     "execution_state": exc.execution_state,
                     "safe_response": True,
                     "no_execution_confirmed": True,
+                    "conversation_diagnostics": exc.conversation_diagnostics,
                 },
             },
             prepared=None,
@@ -372,7 +399,12 @@ def run_reasoning_with_optional_orchestrator(
         prepared.reasoning_message,
         **dict(conversation_kwargs),
     )
-    result = _enforce_non_execution_response(result)
+    result, guard_result = _enforce_non_execution_response(
+        result,
+        request=prepared.normalized_user_request,
+        intent=prepared.conversation_intent,
+        working_set=prepared.conversation_working_set,
+    )
     result = _sanitize_user_channel_response(
         result,
         request=prepared.normalized_user_request,
@@ -417,6 +449,15 @@ def run_reasoning_with_optional_orchestrator(
             "reasoning_plan": dict(prepared.reasoning_plan),
             "response_plan": dict(prepared.response_plan),
             "planning_snapshot": dict(prepared.planning_snapshot),
+            "conversation_intent": dict(prepared.conversation_intent),
+            "conversation_working_set": dict(prepared.conversation_working_set),
+            "executive_context_grounding": dict(prepared.executive_context_grounding),
+            "evidence_contract": dict(prepared.evidence_contract),
+            "truthfulness": guard_result.safe_trace(),
+            "conversation_diagnostics": {
+                **dict(prepared.conversation_diagnostics),
+                "truthfulness": guard_result.safe_trace(),
+            },
         }
         for key in ("disclosure_decision", "improvement_proposal"):
             if key in existing_meta:
@@ -444,8 +485,23 @@ class ExecutiveOrchestrator:
 
     def prepare_turn(self, turn: ExecutiveTurnInput) -> PreparedExecutiveTurn:
         normalized = _normalize_message(turn.message)
-        classification = classify_request(normalized)
+        recent_turns = summarise_recent_conversation(
+            turn.trace_metadata.get("conversation_history")
+        )
+        conversation_intent = classify_conversation_intent(
+            normalized,
+            recent_turns=recent_turns,
+        )
+        classification = legacy_request_classification(conversation_intent)
         correlation_id = _correlation_id(turn, normalized)
+        working_set = WorkingSetBuilder().build(
+            tenant_id=turn.tenant_id,
+            actor_id=turn.actor_id,
+            conversation_id=turn.conversation_id,
+            current_message=normalized,
+            intent=conversation_intent,
+            recent_turns=recent_turns,
+        )
         trace_counts = _runtime_context_counts(turn.runtime_context)
         self._record_stage(
             correlation_id=correlation_id,
@@ -458,7 +514,10 @@ class ExecutiveOrchestrator:
             context_source_counts=trace_counts,
         )
 
-        if classification == "potentially_executable":
+        if conversation_intent.category in {
+            ConversationIntentCategory.REQUEST_EXECUTION,
+            ConversationIntentCategory.CONFIRM_EXECUTION,
+        }:
             trace_id = self._record_stage(
                 correlation_id=correlation_id,
                 turn=turn,
@@ -472,9 +531,29 @@ class ExecutiveOrchestrator:
             raise OrchestratorError(
                 "potential external execution request blocked",
                 classification=classification,
-                safe_response=_safe_blocked_execution_response(normalized),
+                safe_response=_safe_blocked_execution_response(
+                    normalized,
+                    intent=conversation_intent,
+                    working_set=working_set,
+                ),
                 correlation_id=correlation_id,
                 trace_id=trace_id,
+                conversation_diagnostics=build_conversation_diagnostics(
+                    intent=conversation_intent,
+                    working_set=working_set,
+                    grounding=ExecutiveContextGrounding(
+                        context_confidence="not_loaded",
+                        missing_context=(
+                            "Execution request was blocked before context loading.",
+                        ),
+                    ),
+                    response_contract=ExecutiveResponseContract(
+                        unknowns=(
+                            "No external execution receipt exists for this request.",
+                        ),
+                        permitted_next_action="prepare_only",
+                    ),
+                ),
             )
 
         warnings: list[str] = []
@@ -494,7 +573,26 @@ class ExecutiveOrchestrator:
         context_digest = executive_context.context_digest
         counts = dict(executive_context.source_counts)
         warnings.extend(executive_context.warnings)
+        grounding = ExecutiveContextGroundingBuilder().build(
+            request=normalized,
+            context_text=context_text,
+            context_source_counts=counts,
+            evidence_refs=evidence_refs,
+            warnings=warnings,
+        )
+        response_contract = EvidenceSummaryBuilder().build(
+            intent=conversation_intent,
+            working_set=working_set,
+            grounding=grounding,
+        )
+        conversation_diagnostics = build_conversation_diagnostics(
+            intent=conversation_intent,
+            working_set=working_set,
+            grounding=grounding,
+            response_contract=response_contract,
+        )
         trace_metadata = dict(turn.trace_metadata)
+        trace_metadata.pop("conversation_history", None)
         trace_metadata["executive_context_repository"] = (
             executive_context.to_safe_dict()
         )
@@ -504,8 +602,15 @@ class ExecutiveOrchestrator:
         safety_state = (
             "execution_unavailable_not_executed"
             if classification in {"planning_request", "approval_related"}
+            or conversation_intent.execution_truth_state
+            in {ExecutionTruthState.PROPOSED, ExecutionTruthState.SIMULATED}
             else "normal_non_executing"
         )
+        trace_metadata["conversation_intent"] = conversation_intent.safe_trace()
+        trace_metadata["conversation_working_set"] = working_set.safe_trace()
+        trace_metadata["executive_context_grounding"] = grounding.safe_trace()
+        trace_metadata["evidence_contract"] = response_contract.safe_trace()
+        trace_metadata["conversation_diagnostics"] = conversation_diagnostics
         reasoning_plan: Mapping[str, Any] = {}
         response_plan: Mapping[str, Any] = {}
         planning_snapshot: Mapping[str, Any] = {"status": "not_eligible"}
@@ -632,6 +737,12 @@ class ExecutiveOrchestrator:
             rendered_reasoning_plan,
             rendered_planning_snapshot,
             rendered_intelligence,
+            render_conversation_context_for_prompt(
+                intent=conversation_intent,
+                working_set=working_set,
+                grounding=grounding,
+                response_contract=response_contract,
+            ),
         )
         prepared = PreparedExecutiveTurn(
             correlation_id=correlation_id,
@@ -653,6 +764,11 @@ class ExecutiveOrchestrator:
             reasoning_plan=reasoning_plan,
             response_plan=response_plan,
             planning_snapshot=planning_snapshot,
+            conversation_intent=conversation_intent.safe_trace(),
+            conversation_working_set=working_set.safe_trace(),
+            executive_context_grounding=grounding.safe_trace(),
+            evidence_contract=response_contract.safe_trace(),
+            conversation_diagnostics=conversation_diagnostics,
             warnings=tuple(warnings),
         )
         self._record_stage(
@@ -695,6 +811,11 @@ class ExecutiveOrchestrator:
             "reasoning_plan": dict(prepared.reasoning_plan),
             "response_plan": dict(prepared.response_plan),
             "planning_snapshot": dict(prepared.planning_snapshot),
+            "conversation_intent": dict(prepared.conversation_intent),
+            "conversation_working_set": dict(prepared.conversation_working_set),
+            "executive_context_grounding": dict(prepared.executive_context_grounding),
+            "evidence_contract": dict(prepared.evidence_contract),
+            "conversation_diagnostics": dict(prepared.conversation_diagnostics),
             "safety_state": prepared.safety_state,
             "execution_state": "not_executed",
             "warnings": list(prepared.warnings),
@@ -725,6 +846,11 @@ class ExecutiveOrchestrator:
             "reasoning_plan": dict(prepared.reasoning_plan),
             "response_plan": dict(prepared.response_plan),
             "planning_snapshot": dict(prepared.planning_snapshot),
+            "conversation_intent": dict(prepared.conversation_intent),
+            "conversation_working_set": dict(prepared.conversation_working_set),
+            "executive_context_grounding": dict(prepared.executive_context_grounding),
+            "evidence_contract": dict(prepared.evidence_contract),
+            "conversation_diagnostics": dict(prepared.conversation_diagnostics),
             "safety_state": prepared.safety_state,
             "execution_state": "not_executed",
             "warnings": list(prepared.warnings),
@@ -762,6 +888,11 @@ class ExecutiveOrchestrator:
             "reasoning_plan": dict(prepared.reasoning_plan),
             "response_plan": dict(prepared.response_plan),
             "planning_snapshot": dict(prepared.planning_snapshot),
+            "conversation_intent": dict(prepared.conversation_intent),
+            "conversation_working_set": dict(prepared.conversation_working_set),
+            "executive_context_grounding": dict(prepared.executive_context_grounding),
+            "evidence_contract": dict(prepared.evidence_contract),
+            "conversation_diagnostics": dict(prepared.conversation_diagnostics),
             "response_digest": _digest(response_text)[:16],
             "evidence_refs": list(prepared.evidence_refs),
             "safety_state": prepared.safety_state,
@@ -824,39 +955,22 @@ class ExecutiveOrchestrator:
 
 
 def classify_request(message: str) -> str:
-    text = message.casefold()
-    stripped = text.strip()
-
-    if _contains_any(
-        text,
-        (
-            "ignore previous instructions",
-            "reveal your system prompt",
-            "reveal system prompt",
-            "reveal secret",
-            "api key",
-        ),
-    ):
-        return "unsupported_or_unsafe"
-
-    if _is_external_action_request(text):
-        return "potentially_executable"
+    stripped = message.casefold().strip()
     if stripped.startswith("/ovos"):
         return "deterministic_ovos_command"
-    if _contains_any(text, ("daily brief", "brief me", "today's brief")):
+    if _contains_any(stripped, ("daily brief", "brief me", "today's brief")):
         return "daily_brief"
-    if _is_executive_status_request(text):
-        return "executive_status"
-    if _is_decision_support_request(text):
-        return "decision_support"
-    if _contains_any(text, ("approve", "approval", "pending decision")):
+    if _contains_any(stripped, ("approve", "approval", "pending decision")):
         return "approval_related"
-    if _is_planning_request(text):
-        return "planning_request"
-    return "ordinary_conversation"
+    return legacy_request_classification(classify_conversation_intent(message))
 
 
-def _safe_blocked_execution_response(message: str) -> str:
+def _safe_blocked_execution_response(
+    message: str,
+    *,
+    intent: ConversationIntent | None = None,
+    working_set: ConversationWorkingSet | None = None,
+) -> str:
     text = message.casefold()
     if re.search(r"\b(can you|do you|are you able to)\b.+\bread\b", text) and (
         "gmail" in text or "calendar" in text or "clickup" in text
@@ -888,7 +1002,11 @@ def _safe_blocked_execution_response(message: str) -> str:
             "and I cannot send, create, modify or delete external records; "
             "execution remains not_executed."
         )
-    return EXECUTION_UNAVAILABLE_MESSAGE
+    return RefusalAlternativeBuilder().build(
+        request=message,
+        intent=intent,
+        working_set=working_set,
+    )
 
 
 def _is_external_action_request(text: str) -> bool:
@@ -1008,8 +1126,12 @@ def _with_runtime_context(
     conversation_kwargs: Mapping[str, Any],
     limits: ExecutiveContextLimits | None = None,
 ) -> ExecutiveTurnInput:
-    del agent, conversation_kwargs, limits
-    return turn
+    del agent, limits
+    trace_metadata = dict(turn.trace_metadata)
+    history = conversation_kwargs.get("conversation_history")
+    if history and "conversation_history" not in trace_metadata:
+        trace_metadata["conversation_history"] = history
+    return replace(turn, trace_metadata=trace_metadata)
 
 
 def _recent_conversation_context_items(value: Any) -> list[ContextItem]:
@@ -1201,6 +1323,7 @@ def _build_reasoning_message(
     rendered_reasoning_plan: str = "",
     rendered_planning_snapshot: str = "",
     rendered_intelligence: str = "",
+    rendered_conversation_context: str = "",
 ) -> str:
     sections = [
         "EXECUTIVE ORCHESTRATOR CONTEXT",
@@ -1213,6 +1336,11 @@ def _build_reasoning_message(
         "",
         context,
     ]
+    if rendered_conversation_context:
+        sections.extend([
+            "",
+            rendered_conversation_context,
+        ])
     if rendered_intelligence:
         sections.extend([
             "",
@@ -1317,27 +1445,92 @@ _EXECUTION_CLAIM_PATTERNS = (
 )
 
 
-def _enforce_non_execution_response(result: Mapping[str, Any]) -> Mapping[str, Any]:
+def _enforce_non_execution_response(
+    result: Mapping[str, Any],
+    *,
+    request: str = "",
+    intent: Mapping[str, Any] | None = None,
+    working_set: Mapping[str, Any] | None = None,
+) -> tuple[Mapping[str, Any], ExecutionGuardResult]:
     final_response = str(result.get("final_response") or "")
-    folded = final_response.casefold()
-    if not any(pattern in folded for pattern in _EXECUTION_CLAIM_PATTERNS):
-        return result
+    guard_intent = _intent_from_trace(intent or {})
+    guard_working_set = _working_set_from_trace(working_set or {})
+    guard_result = ExecutionClaimGuard().inspect(
+        final_response,
+        request=request,
+        intent=guard_intent,
+        working_set=guard_working_set,
+        has_execution_receipt=False,
+    )
+    if not guard_result.rewritten:
+        return result, guard_result
     rewritten = dict(result)
-    rewritten["final_response"] = EXECUTION_UNAVAILABLE_MESSAGE
+    rewritten["final_response"] = guard_result.final_response
     existing = dict(rewritten.get("executive_orchestrator") or {})
-    existing["execution_state"] = "not_executed"
+    existing["execution_state"] = guard_result.execution_truth_state.value
     existing["no_execution_confirmed"] = True
     existing.setdefault("warnings", [])
-    if "misleading_execution_claim_rewritten" not in existing["warnings"]:
-        existing["warnings"].append("misleading_execution_claim_rewritten")
+    if guard_result.warning and guard_result.warning not in existing["warnings"]:
+        existing["warnings"].append(guard_result.warning)
+    existing["truthfulness"] = guard_result.safe_trace()
     rewritten["executive_orchestrator"] = existing
-    return rewritten
+    return rewritten, guard_result
+
+
+def _intent_from_trace(value: Mapping[str, Any]) -> ConversationIntent:
+    category = str(value.get("category") or "discuss")
+    truth_state = str(value.get("execution_truth_state") or "not_requested")
+    try:
+        intent_category = ConversationIntentCategory(category)
+    except ValueError:
+        intent_category = ConversationIntentCategory.DISCUSS
+    try:
+        execution_truth_state = ExecutionTruthState(truth_state)
+    except ValueError:
+        execution_truth_state = ExecutionTruthState.NOT_REQUESTED
+    return ConversationIntent(
+        category=intent_category,
+        legacy_classification=str(
+            value.get("legacy_classification") or "ordinary_conversation"
+        ),
+        execution_truth_state=execution_truth_state,
+        confidence=str(value.get("confidence") or "medium"),
+        reason_codes=tuple(str(item) for item in value.get("reason_codes") or ()),
+        requires_clarification=bool(value.get("requires_clarification")),
+        external_action_requested=bool(value.get("external_action_requested")),
+        false_completion_pressure=bool(value.get("false_completion_pressure")),
+        safe_to_plan=bool(value.get("safe_to_plan", True)),
+        safe_to_draft=bool(value.get("safe_to_draft", True)),
+    )
+
+
+def _working_set_from_trace(value: Mapping[str, Any]) -> ConversationWorkingSet | None:
+    if not value:
+        return None
+    try:
+        execution_state = ExecutionTruthState(
+            str(value.get("execution_state") or "not_requested")
+        )
+    except ValueError:
+        execution_state = ExecutionTruthState.NOT_REQUESTED
+    return ConversationWorkingSet(
+        tenant_id="trace",
+        actor_id="trace",
+        conversation_id="trace",
+        active_options=tuple(str(item) for item in value.get("active_options") or ()),
+        rejected_options=tuple(
+            str(item) for item in value.get("rejected_options") or ()
+        ),
+        execution_state=execution_state,
+    )
 
 
 _RESTRICTED_RESPONSE_PATTERNS = (
     re.compile(r"\b(GatewayRunner|ExecutiveOrchestrator|AIAgent)\b"),
     re.compile(r"\b(_handle_message|prepare_turn|observe_response|run_conversation)\b"),
-    re.compile(r"(/opt/ai-stack|/Users/|gateway/[A-Za-z0-9_./-]+\.py|hermes_cli/[A-Za-z0-9_./-]+\.py)"),
+    re.compile(
+        r"(/opt/ai-stack|/Users/|gateway/[A-Za-z0-9_./-]+\.py|hermes_cli/[A-Za-z0-9_./-]+\.py)"
+    ),
     re.compile(r"\b(trace|eo)_[a-f0-9]{6,}\b"),
     re.compile(r"\b[0-9a-f]{12,40}\b"),
     re.compile(r"\bHERMES_[A-Z0-9_]+\b"),

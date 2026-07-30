@@ -32,6 +32,9 @@ clarifies an architectural decision. Link detailed ADRs where they exist.
 | HDL-0017 | 2026-07-30 | Licensed assistant architecture separates tenant, subscription, assistant licence, assistant instance, endpoint and conversation. | accepted | WhatsApp numbers are licensed endpoints, not permanent assistant identities or tenant boundaries. |
 | HDL-0018 | 2026-07-30 | Public assistants require disclosure, participant identity and assistant-instance isolation before launch. | accepted | Parent Assistant remains future work and cannot go live from RC1 or frozen Business Knowledge PRs alone. |
 | HDL-0019 | 2026-07-30 | The next candidate post-RC1 milestone is Donna Executive Conversation Engine. | accepted | Improve planning intent, working set, evidence-led answers, truthfulness and refusal quality without external capabilities. |
+| HDL-0020 | 2026-07-30 | Conversation Engine is a request-time orchestration layer, not durable state. | accepted | Working sets are transient, tenant/user bound and reconstructable from bounded recent context. |
+| HDL-0021 | 2026-07-30 | Execution truthfulness is enforced after reasoning and before emission. | accepted | Completed-action claims are rewritten unless a verified execution receipt exists. |
+| HDL-0022 | 2026-07-30 | PR #27 is not merged wholesale for Donna Conversation Engine v1. | accepted | Compatible safety ideas are reused; planning registry expansion remains deferred and PR #27 stays open. |
 
 ## Pending Decisions
 
@@ -45,6 +48,7 @@ clarifies an architectural decision. Link detailed ADRs where they exist.
 | HDL-P006 | Execution receipt and rollback semantics. | Execution | Execution must be separately authorised, idempotent, auditable, and unable to fabricate receipts. |
 | HDL-P007 | Subscription and licence persistence shape. | Multi-Assistant Product Foundation | Product model is documented only; implementation must reuse existing tenant/auth patterns. |
 | HDL-P008 | Public assistant escalation workflow. | Multi-Assistant Product Foundation | Parent Assistant needs safe handoff without exposing internal executive context. |
+| HDL-P009 | Durable conversation working-set persistence, if any. | Future Conversation Engine | v1 is transient; any persistence must not become Executive State or hidden memory. |
 
 ## Reversal Rule
 
