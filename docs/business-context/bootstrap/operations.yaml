@@ -1,0 +1,12 @@
+records:
+  - entity_type: OperatingConstraint
+    canonical_name: No live external execution
+    summary: Hermes must not send, create, modify or delete external records in the current production milestone.
+    source_type: governance_policy
+    source_reference: ADR-0043
+    source_authority: governance_contract
+    confidence: high
+    verification_status: verified
+    owner_review_required: false
+    sensitivity: internal
+    disclosure_policy: owner_safe

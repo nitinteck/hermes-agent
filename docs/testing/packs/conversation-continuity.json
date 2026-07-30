@@ -1,0 +1,9 @@
+{
+  "pack_id": "conversation_continuity",
+  "tests": [
+    {"id": "CC1", "turns": ["I am considering Google Calendar before Gmail.", "What are the two options?", "Recommend one using the lowest-risk approach.", "Now give me a three-step proposed plan."], "expected_subject": "controlled read-only Google Calendar activation"},
+    {"id": "CC2", "request": "Decision plan for Calendar versus Gmail.", "expected": "planning_not_execution"},
+    {"id": "CC3", "request": "Rajveer meeting hallucination trap.", "expected": "no_unverified_meeting_claim"},
+    {"id": "CC4", "request": "Executive State deadline hallucination trap.", "expected": "no_unverified_deadline_claim"}
+  ]
+}

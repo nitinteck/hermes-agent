@@ -373,6 +373,13 @@ def run_reasoning_with_optional_orchestrator(
         **dict(conversation_kwargs),
     )
     result = _enforce_non_execution_response(result)
+    if isinstance(result, Mapping):
+        result = _inspect_and_sanitize_response(
+            result,
+            request=prepared.normalized_user_request,
+            channel=turn.platform,
+            correlation_id=prepared.correlation_id,
+        )
     elapsed_ms = int((time.monotonic() - started) * 1000)
     observation = active_orchestrator.observe_response(
         prepared,
@@ -409,6 +416,14 @@ def run_reasoning_with_optional_orchestrator(
             "response_plan": dict(prepared.response_plan),
             "planning_snapshot": dict(prepared.planning_snapshot),
         }
+        for key in (
+            "disclosure_class",
+            "disclosure_decision",
+            "improvement_proposal",
+            "capability_truth",
+        ):
+            if key in existing_meta:
+                result["executive_orchestrator"][key] = existing_meta[key]
     return OrchestratedReasoningResult(
         result=result,
         prepared=prepared,
@@ -806,6 +821,14 @@ def classify_request(message: str) -> str:
 
 def _safe_blocked_execution_response(message: str) -> str:
     text = message.casefold()
+    try:
+        from gateway.capability_truth import user_safe_capability_answer
+
+        answer = user_safe_capability_answer(message)
+        if answer:
+            return answer
+    except Exception:
+        pass
     if re.search(r"\b(can you|do you|are you able to)\b.+\bread\b", text) and (
         "gmail" in text or "calendar" in text or "clickup" in text
     ):
@@ -843,6 +866,20 @@ def _is_external_action_request(text: str) -> bool:
     if _contains_any(
         text,
         (
+            "decision plan",
+            "compare calendar",
+            "comparing calendar",
+            "plan capability",
+            "review integration options",
+            "should we add read-only",
+            "stabilise whatsapp",
+            "recommend a path",
+        ),
+    ):
+        return False
+    if _contains_any(
+        text,
+        (
             "run shell",
             "execute shell",
             "subprocess",
@@ -858,6 +895,8 @@ def _is_external_action_request(text: str) -> bool:
     executable_patterns = (
         r"\bsend\b.+\b(email|message|whatsapp)\b",
         r"\bemail\b.+\bsaying\b",
+        r"\bconnect\b.+\b(gmail|calendar|clickup)\b",
+        r"\bread\b.+\b(gmail|calendar|clickup)\b",
         r"\bcreate\b.+\b(clickup|task|calendar|event|meeting)\b",
         r"\b(schedule|book)\b.+\b(meeting|calendar|event)\b",
         r"\bmust\b.+\b(schedule|create|send|email)\b",
@@ -899,11 +938,14 @@ def _is_executive_status_request(text: str) -> bool:
 def _is_decision_support_request(text: str) -> bool:
     if "what should i use you for" in text:
         return False
+    if "decision plan" in text or "create a decision plan" in text:
+        return False
     return _contains_any(
         text,
         (
             "should we",
             "should i",
+            "compare",
             "recommend",
             "decide",
             "decision",
@@ -917,6 +959,17 @@ def _is_decision_support_request(text: str) -> bool:
 def _is_planning_request(text: str) -> bool:
     if "what should i use you for" in text:
         return False
+    if _contains_any(
+        text,
+        (
+            "create a decision plan",
+            "decision plan",
+            "design a rollout",
+            "review integration options",
+            "propose a low-risk implementation path",
+        ),
+    ):
+        return True
     return _contains_any(text, ("plan", "roadmap", "milestone"))
 
 
@@ -1326,6 +1379,59 @@ def _enforce_non_execution_response(result: Mapping[str, Any]) -> Mapping[str, A
     existing.setdefault("warnings", [])
     if "misleading_execution_claim_rewritten" not in existing["warnings"]:
         existing["warnings"].append("misleading_execution_claim_rewritten")
+    rewritten["executive_orchestrator"] = existing
+    return rewritten
+
+
+def _inspect_and_sanitize_response(
+    result: Mapping[str, Any],
+    *,
+    request: str,
+    channel: str,
+    correlation_id: str,
+) -> Mapping[str, Any]:
+    try:
+        from gateway.capability_truth import (
+            build_default_capability_truth_registry,
+            user_safe_capability_answer,
+        )
+        from gateway.governance import (
+            USER_SAFE,
+            is_response_output_inspection_enabled,
+            sanitize_user_channel_response,
+        )
+    except Exception:
+        return result
+    if not is_response_output_inspection_enabled():
+        return result
+    rewritten = dict(result)
+    original = str(rewritten.get("final_response") or "")
+    capability_answer = user_safe_capability_answer(request)
+    inspected_text = capability_answer or original
+    sanitized = sanitize_user_channel_response(
+        inspected_text,
+        request=request,
+        channel=channel,
+        correlation_id=correlation_id,
+    )
+    rewritten["final_response"] = sanitized.final_response
+    existing = dict(rewritten.get("executive_orchestrator") or {})
+    warnings = list(existing.get("warnings") or [])
+    warnings.extend(sanitized.warnings)
+    if capability_answer and capability_answer != original:
+        warnings.append("capability_truth_rewrite")
+    existing["warnings"] = list(dict.fromkeys(warnings))
+    existing["disclosure_class"] = USER_SAFE
+    existing["disclosure_decision"] = {
+        "allowed": sanitized.disclosure_decision.allowed,
+        "action": sanitized.disclosure_decision.action,
+        "matched_concepts": list(sanitized.disclosure_decision.matched_concepts),
+    }
+    if sanitized.improvement_proposal is not None:
+        existing["improvement_proposal"] = sanitized.improvement_proposal.safe_trace()
+    existing["capability_truth"] = build_default_capability_truth_registry().status()
+    existing["execution_state"] = "not_executed"
+    existing["no_execution_confirmed"] = True
     rewritten["executive_orchestrator"] = existing
     return rewritten
 

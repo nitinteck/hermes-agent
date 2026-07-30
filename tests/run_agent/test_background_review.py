@@ -2,8 +2,61 @@
 
 from __future__ import annotations
 
+import pytest
+
 import run_agent as run_agent_module
 from run_agent import AIAgent
+
+
+@pytest.fixture(autouse=True)
+def _enable_legacy_direct_background_review(monkeypatch):
+    """Existing background-review tests exercise the explicit opt-in path."""
+    monkeypatch.setenv("HERMES_SELF_IMPROVEMENT_DIRECT_MUTATION_ENABLED", "true")
+
+
+def test_background_review_is_proposal_only_by_default(monkeypatch):
+    """Governance hardening: ordinary turns must not directly mutate memory/skills.
+
+    The self-improvement loop can still be represented as a reviewed proposal
+    elsewhere, but the background review fork itself must fail closed unless
+    direct mutation is explicitly enabled.
+    """
+    import agent.background_review as bg_review
+
+    monkeypatch.delenv("HERMES_SELF_IMPROVEMENT_DIRECT_MUTATION_ENABLED", raising=False)
+    events: list[str] = []
+
+    class FakeReviewAgent:
+        def __init__(self, **kwargs):
+            events.append("init")
+
+        def run_conversation(self, **kwargs):
+            events.append("run_conversation")
+
+    monkeypatch.setattr(run_agent_module, "AIAgent", FakeReviewAgent)
+    monkeypatch.setattr(run_agent_module.threading, "Thread", ImmediateThread)
+    monkeypatch.setattr(
+        bg_review,
+        "summarize_background_review_actions",
+        lambda *_args, **_kwargs: events.append("summarize") or [],
+    )
+
+    printed: list[str] = []
+    callbacks: list[str] = []
+    agent = _bare_agent()
+    agent._safe_print = lambda *args, **_kwargs: printed.append(" ".join(map(str, args)))
+    agent.background_review_callback = callbacks.append
+
+    AIAgent._spawn_background_review(
+        agent,
+        messages_snapshot=[{"role": "user", "content": "hello"}],
+        review_memory=True,
+        review_skills=True,
+    )
+
+    assert events == []
+    assert printed == []
+    assert callbacks == []
 
 
 def _bare_agent() -> AIAgent:

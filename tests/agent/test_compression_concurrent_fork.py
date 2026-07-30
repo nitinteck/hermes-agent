@@ -1009,7 +1009,10 @@ def test_post_acquire_error_releases_owned_lock(tmp_path: Path, monkeypatch) -> 
     agent.context_compressor.compress.assert_not_called()
 
 
-def test_review_fork_disables_compression_to_prevent_stale_parent_fork(tmp_path: Path) -> None:
+def test_review_fork_disables_compression_to_prevent_stale_parent_fork(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     """The background-review fork must set ``compression_enabled = False``
     so it can never compress the parent it shares a session_id with
     (issue #38727).
@@ -1037,6 +1040,7 @@ def test_review_fork_disables_compression_to_prevent_stale_parent_fork(tmp_path:
     """
     import agent.background_review as br
 
+    monkeypatch.setenv("HERMES_SELF_IMPROVEMENT_DIRECT_MUTATION_ENABLED", "true")
     captured = {}
 
     def _fake_run_conversation(self, *_a, **_k):

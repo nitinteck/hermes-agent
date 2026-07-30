@@ -1,0 +1,12 @@
+records:
+  - entity_type: Policy
+    canonical_name: Business knowledge disclosure policy
+    summary: Business knowledge may be available to reasoning only when sensitivity and disclosure policy allow it.
+    source_type: governance_policy
+    source_reference: ADR-0040
+    source_authority: governance_contract
+    confidence: high
+    verification_status: verified
+    owner_review_required: false
+    sensitivity: internal
+    disclosure_policy: owner_safe

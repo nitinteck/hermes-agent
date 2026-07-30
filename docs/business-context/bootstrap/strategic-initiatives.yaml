@@ -1,0 +1,67 @@
+records:
+  - entity_type: Initiative
+    canonical_name: Hermes
+    summary: Executive assistant and OVOS governance programme.
+    source_type: repository_documentation
+    source_reference: docs/HERMES-CURRENT-STATE.md
+    source_authority: project_documentation
+    confidence: high
+    verification_status: verified
+    owner_review_required: false
+    sensitivity: internal
+    disclosure_policy: owner_safe
+  - entity_type: Initiative
+    canonical_name: Franchise growth
+    summary: Growth initiative named in current project context; details require owner review.
+    source_type: project_request
+    source_reference: governance-hardening-business-context-v1
+    source_authority: user_supplied_context
+    confidence: low
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: internal
+    disclosure_policy: owner_safe
+  - entity_type: Initiative
+    canonical_name: School expansion
+    summary: Education growth initiative named in current project context; details require owner review.
+    source_type: project_request
+    source_reference: governance-hardening-business-context-v1
+    source_authority: user_supplied_context
+    confidence: low
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: internal
+    disclosure_policy: owner_safe
+  - entity_type: Initiative
+    canonical_name: International partnerships
+    summary: Partnership initiative named in current project context; details require owner review.
+    source_type: project_request
+    source_reference: governance-hardening-business-context-v1
+    source_authority: user_supplied_context
+    confidence: low
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: internal
+    disclosure_policy: owner_safe
+  - entity_type: Initiative
+    canonical_name: Om Vidya Group website
+    summary: Website initiative named in current project context; details require owner review.
+    source_type: project_request
+    source_reference: governance-hardening-business-context-v1
+    source_authority: user_supplied_context
+    confidence: low
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: internal
+    disclosure_policy: owner_safe
+  - entity_type: Initiative
+    canonical_name: Human Capital Initiative
+    summary: Initiative named in current project context; details require owner review.
+    source_type: project_request
+    source_reference: governance-hardening-business-context-v1
+    source_authority: user_supplied_context
+    confidence: low
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: internal
+    disclosure_policy: owner_safe

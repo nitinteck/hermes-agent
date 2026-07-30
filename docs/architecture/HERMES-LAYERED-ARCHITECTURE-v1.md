@@ -1,6 +1,6 @@
 # Hermes Layered Architecture v1
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 
 This document is the durable architecture record for the Hermes Phase 4 target
 shape. It describes the current deployed runtime direction and the boundaries
@@ -23,7 +23,8 @@ flowchart TD
   P --> D
   D --> G["AIAgent reasoning provider"]
   G --> D
-  D --> H["Gateway response delivery"]
+  D --> X["Governance output inspection"]
+  X --> H["Gateway response delivery"]
 ```
 
 ## Responsibilities
@@ -67,6 +68,10 @@ transparent evaluation and recommendations. It cannot approve plans, execute
 plans, call integrations, execute Skills, invoke MCP, call subprocesses or
 authorise execution.
 
+The Governance layer owns IP disclosure inspection, capability-truth validation,
+post-generation output inspection, self-improvement proposal quarantine and
+business-context disclosure checks before user-channel delivery.
+
 The reasoning provider remains the configured LLM implementation. It reasons
 over context selected by Hermes; it does not decide which organisational
 context to retrieve.
@@ -97,8 +102,9 @@ The gateway path is intentionally not redesigned.
    `ReasoningPlan` is eligible.
 10. `ExecutiveOrchestrator.prepare_turn(...)` constructs the reasoning request.
 11. `AIAgent.run_conversation(...)` calls the configured provider/model.
-12. `ExecutiveOrchestrator.observe_response(...)` records safe trace metadata.
-13. The existing gateway delivery path returns the response.
+12. Governance output inspection sanitizes IP, capability and safety issues.
+13. `ExecutiveOrchestrator.observe_response(...)` records safe trace metadata.
+14. The existing gateway delivery path returns the response.
 
 ## Execution Boundary
 
@@ -121,16 +127,17 @@ Write or unknown access cannot be used for executive context collection.
 
 ## Current Milestone
 
-`Hermes Executive Planning Engine v1`
+`Hermes Governance Hardening And Business Context Foundation v1`
 
-This milestone adds deterministic `ExecutivePlan`, `CandidatePlan`,
-`PlanningSnapshot`, `ApprovalRequirement` and `ProposedActionReference`
-contracts above Executive Reasoning. It does not authorise Calendar reads, add
-external writes or enable live execution.
+This milestone hardens user-channel disclosure, disables direct
+self-improvement mutation, makes capability truth deterministic, validates
+planning safety and introduces structured owner-reviewed business knowledge.
+It does not authorise Calendar reads, add external writes or enable live
+execution.
 
 ## Next Milestone
 
-`Hermes Executive Approval Engine v1 Design`
+`Owner-only business context bootstrap and focused WhatsApp retest`
 
 The Approval Engine remains disabled until that milestone is explicitly
 designed, implemented and authorised.

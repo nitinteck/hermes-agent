@@ -1,0 +1,45 @@
+records:
+  - entity_type: Risk
+    canonical_name: Commercial lease matters
+    summary: Template placeholder only. Add reviewed details separately.
+    source_type: restricted_template
+    source_reference: restricted-context-template.yaml
+    source_authority: template
+    confidence: low
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: restricted
+    disclosure_policy: internal_reasoning_only
+  - entity_type: Risk
+    canonical_name: Legal disputes
+    summary: Template placeholder only. Do not disclose in normal WhatsApp.
+    source_type: restricted_template
+    source_reference: restricted-context-template.yaml
+    source_authority: template
+    confidence: low
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: restricted
+    disclosure_policy: never_disclose
+  - entity_type: FinancialMetric
+    canonical_name: Confidential financials
+    summary: Template placeholder only. Requires separate owner review before use.
+    source_type: restricted_template
+    source_reference: restricted-context-template.yaml
+    source_authority: template
+    confidence: low
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: restricted
+    disclosure_policy: internal_reasoning_only
+  - entity_type: Policy
+    canonical_name: Credentials and secrets
+    summary: Secrets must never be imported into business knowledge.
+    source_type: restricted_template
+    source_reference: restricted-context-template.yaml
+    source_authority: governance_contract
+    confidence: high
+    verification_status: verified
+    owner_review_required: false
+    sensitivity: secret
+    disclosure_policy: never_disclose

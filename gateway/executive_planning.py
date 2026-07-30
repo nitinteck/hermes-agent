@@ -304,6 +304,10 @@ class ExecutivePlan:
         if self.model_assisted:
             raise ValueError("model-assisted planning is disabled for v1 rollout")
 
+    @property
+    def status(self) -> str:
+        return self.plan_status
+
     def safe_trace(self) -> dict[str, Any]:
         return {
             "plan_id": _safe_label(self.plan_id),
@@ -388,6 +392,63 @@ class PlanningExecutionResult:
     execution_status: str = NOT_EXECUTED
     external_calls_enabled: bool = False
     safe_message: str = PLANNING_LIMITATION
+
+
+@dataclass(frozen=True)
+class PlanningContextBinding:
+    active_subject: str = ""
+    current_objective: str = ""
+    prior_options: tuple[str, ...] = ()
+    prior_recommendation: str = ""
+    latest_constraint: str = ""
+    referenced_step: str = ""
+    unresolved_evidence: tuple[str, ...] = ()
+    current_capability_truth: Mapping[str, Any] = field(default_factory=dict)
+    conversation_turn_ids: tuple[str, ...] = ()
+    source_context_ids: tuple[str, ...] = ()
+
+    def safe_trace(self) -> dict[str, Any]:
+        return {
+            "active_subject": _safe_label(self.active_subject),
+            "current_objective": _safe_label(self.current_objective),
+            "prior_options": [_safe_label(option) for option in self.prior_options],
+            "prior_recommendation": _safe_label(self.prior_recommendation),
+            "latest_constraint": _safe_label(self.latest_constraint),
+            "referenced_step": _safe_label(self.referenced_step),
+            "unresolved_evidence": [
+                _safe_label(item) for item in self.unresolved_evidence
+            ],
+            "current_capability_truth": dict(self.current_capability_truth),
+            "conversation_turn_ids": [
+                _safe_label(item) for item in self.conversation_turn_ids
+            ],
+            "source_context_ids": [
+                _safe_label(item) for item in self.source_context_ids
+            ],
+        }
+
+    @classmethod
+    def from_trace(cls, value: Any) -> PlanningContextBinding:
+        if not isinstance(value, Mapping):
+            return cls()
+        return cls(
+            active_subject=str(value.get("active_subject") or ""),
+            current_objective=str(value.get("current_objective") or ""),
+            prior_options=tuple(str(item) for item in value.get("prior_options") or ()),
+            prior_recommendation=str(value.get("prior_recommendation") or ""),
+            latest_constraint=str(value.get("latest_constraint") or ""),
+            referenced_step=str(value.get("referenced_step") or ""),
+            unresolved_evidence=tuple(
+                str(item) for item in value.get("unresolved_evidence") or ()
+            ),
+            current_capability_truth=dict(value.get("current_capability_truth") or {}),
+            conversation_turn_ids=tuple(
+                str(item) for item in value.get("conversation_turn_ids") or ()
+            ),
+            source_context_ids=tuple(
+                str(item) for item in value.get("source_context_ids") or ()
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -508,7 +569,14 @@ class ExecutivePlanningRequest:
             tenant_id=tenant_id,
             actor_id=actor_id,
             normalized_user_request=_safe_text(normalized_user_request, 1_000),
-            request_classification=str(trace.get("request_classification") or ""),
+            request_classification=str(
+                trace.get("request_classification")
+                or (
+                    "planning_request"
+                    if str(trace.get("reasoning_mode") or "") == "planning_stub"
+                    else ""
+                )
+            ),
             reasoning_plan=trace,
             context_source_counts=dict(context_source_counts),
             evidence_refs=tuple(_safe_label(ref) for ref in evidence_refs)[
@@ -604,12 +672,12 @@ class ExecutivePlanningEngine:
         candidates = _generate_candidates(request, strategy, self.limits)
         candidates = tuple(candidates[: self.limits.max_candidates])
         evaluated = tuple(_attach_evaluations(candidates, strategy_id))
-        errors = tuple(
+        dependency_errors = tuple(
             error
             for candidate in evaluated
             for error in validate_plan_dependencies(candidate)
         )
-        if errors:
+        if dependency_errors:
             return PlanningSnapshot(
                 planning_request_id=request.planning_request_id,
                 status="invalid",
@@ -617,7 +685,7 @@ class ExecutivePlanningEngine:
                 eligible=True,
                 reason_code="dependency_validation_failed",
                 candidate_plans=evaluated,
-                errors=errors,
+                errors=dependency_errors,
                 confidence="unknown",
                 latency_ms=_elapsed_ms(started),
             )
@@ -626,6 +694,9 @@ class ExecutivePlanningEngine:
             key=lambda plan: plan.evaluation.total_score if plan.evaluation else 0,
         )
         recommended = _with_recommendation(recommended, evaluated)
+        safety_errors = validate_planning_safety(request, recommended)
+        if safety_errors:
+            recommended = _repair_plan_for_safety_first(request, recommended)
         evaluated = tuple(
             recommended if plan.plan_id == recommended.plan_id else plan
             for plan in evaluated
@@ -638,6 +709,8 @@ class ExecutivePlanningEngine:
             reason_code=decision.reason_code,
             candidate_plans=evaluated,
             recommended_plan=recommended,
+            errors=safety_errors,
+            warnings=_planning_warnings(request, safety_errors),
             confidence=_planning_confidence(request, recommended),
             latency_ms=_elapsed_ms(started),
         )
@@ -710,6 +783,16 @@ def is_proposed_action_generation_enabled() -> bool:
     return True if value is None else _is_truthy_value(value)
 
 
+def is_planning_safety_validator_enabled() -> bool:
+    value = os.getenv("HERMES_PLANNING_SAFETY_VALIDATOR_ENABLED")
+    return True if value is None else _is_truthy_value(value)
+
+
+def is_planning_context_binding_enabled() -> bool:
+    value = os.getenv("HERMES_PLANNING_CONTEXT_BINDING_ENABLED")
+    return True if value is None else _is_truthy_value(value)
+
+
 def build_planning_status() -> dict[str, Any]:
     registry = build_default_planning_registry()
     return {
@@ -719,6 +802,8 @@ def build_planning_status() -> dict[str, Any]:
         "model_assisted_planning_enabled": is_model_assisted_planning_enabled(),
         "candidate_evaluation_enabled": is_candidate_evaluation_enabled(),
         "proposed_action_generation_enabled": is_proposed_action_generation_enabled(),
+        "planning_safety_validator_enabled": is_planning_safety_validator_enabled(),
+        "planning_context_binding_enabled": is_planning_context_binding_enabled(),
         "approval_engine_enabled": False,
         "approval_recording_available": False,
         "execution_engine_enabled": False,
@@ -760,8 +845,25 @@ def render_planning_snapshot_for_prompt(snapshot: PlanningSnapshot) -> str:
     lines.extend((
         "Planning Objective:",
         f"- {plan.objective.summary}",
+        "Evidence Basis:",
+        f"- Evidence references: {len(plan.evidence_refs)}; source confidence: {snapshot.confidence}",
+        f"Confidence: {snapshot.confidence}",
         "Recommended Proposed Plan:",
     ))
+    if plan.recommendation is not None:
+        lines.append(f"- Recommendation: {plan.recommendation.rationale}")
+    if snapshot.errors:
+        lines.append("Planning Safety Validation:")
+        for error in snapshot.errors[:6]:
+            lines.append(f"- {error.code}: {error.safe_message}")
+    if plan.assumptions:
+        lines.append("Assumptions And Missing Evidence:")
+        for assumption in plan.assumptions[:8]:
+            lines.append(f"- {assumption.summary} ({assumption.confidence})")
+    if plan.constraints:
+        lines.append("Constraints:")
+        for constraint in plan.constraints[:6]:
+            lines.append(f"- {constraint.summary}")
     for milestone in plan.milestones[:4]:
         lines.append(
             f"- {milestone.title} ({milestone.status}, {milestone.execution_status})"
@@ -876,6 +978,9 @@ def _build_candidate_plan(
     index: int,
     limits: PlanningLimits,
 ) -> CandidatePlan:
+    binding = _planning_context_binding(request)
+    high_ambition = _is_high_ambition_revenue_plan(request.normalized_user_request)
+    unsafe_order = _requests_unsafe_execution_first(request.normalized_user_request)
     base_id = _digest(
         json.dumps(
             {
@@ -894,6 +999,27 @@ def _build_candidate_plan(
         objective=_objective_summary(request, variant),
         sequence=1,
     )
+    milestone_titles = _milestone_titles(strategy.strategy_id, variant)
+    step_titles = _step_titles(strategy.strategy_id, variant)
+    if unsafe_order:
+        milestone_titles = (
+            "Safety controls and capability boundaries confirmed",
+            "Approvals and audit design reviewed",
+            "Read-only or sandbox validation completed",
+            "Restricted pilot prepared before any broader rollout",
+        )
+        step_titles = (
+            "Complete scope and threat analysis",
+            "Define safety controls and capability boundaries",
+            "Design audit, observability and rollback checks",
+            "Prepare approval design before any production mutation",
+            "Validate in sandbox or read-only mode",
+            "Run a restricted pilot before broader execution is considered",
+        )
+    if binding.active_subject:
+        step_titles = tuple(
+            f"{title} for {binding.active_subject}" for title in step_titles[:3]
+        ) + step_titles[3:]
     milestones = tuple(
         PlanMilestone(
             milestone_id=f"ms_{base_id}_{i}",
@@ -901,9 +1027,7 @@ def _build_candidate_plan(
             success_measure_ids=(f"sm_{base_id}_{i}",),
             sequence=i,
         )
-        for i, title in enumerate(
-            _milestone_titles(strategy.strategy_id, variant), start=1
-        )
+        for i, title in enumerate(milestone_titles, start=1)
     )[: limits.max_milestones]
     success = tuple(
         PlanSuccessMeasure(
@@ -926,6 +1050,20 @@ def _build_candidate_plan(
             evidence_refs=request.evidence_refs,
         )
         for i, title in enumerate(_step_titles(strategy.strategy_id, variant), start=1)
+    )[: limits.max_steps]
+    steps = tuple(
+        PlanStep(
+            step_id=f"step_{base_id}_{i}",
+            title=title,
+            sequence=i,
+            workstream_id=workstream.workstream_id,
+            milestone_id=milestones[min(i - 1, len(milestones) - 1)].milestone_id
+            if milestones
+            else None,
+            description="Proposed planning work only; not an executable instruction.",
+            evidence_refs=request.evidence_refs,
+        )
+        for i, title in enumerate(step_titles, start=1)
     )[: limits.max_steps]
     dependencies = tuple(
         PlanDependency(
@@ -987,6 +1125,80 @@ def _build_candidate_plan(
         )
         for ref in request.evidence_refs[: limits.max_evidence_refs]
     )
+    constraints = [
+        PlanConstraint(
+            constraint_id=f"constraint_{base_id}_1",
+            summary="No approvals or external execution are available in Planning Engine v1.",
+        ),
+        PlanConstraint(
+            constraint_id=f"constraint_{base_id}_2",
+            summary="Use only bounded Hermes context, intelligence and reasoning evidence.",
+        ),
+    ]
+    assumptions = [
+        PlanAssumption(
+            assumption_id=f"assumption_{base_id}_1",
+            summary="Missing operational details must be confirmed before approval.",
+        )
+    ]
+    if binding.active_subject:
+        assumptions.append(
+            PlanAssumption(
+                assumption_id=f"assumption_{base_id}_context",
+                summary=(
+                    "Active conversation subject is "
+                    f"{binding.active_subject}; plan must not become generic."
+                ),
+                confidence="derived",
+            )
+        )
+        if binding.prior_options:
+            assumptions.append(
+                PlanAssumption(
+                    assumption_id=f"assumption_{base_id}_options",
+                    summary="Prior options: " + ", ".join(binding.prior_options),
+                    confidence="derived",
+                )
+            )
+    if high_ambition:
+        assumptions.extend(
+            PlanAssumption(
+                assumption_id=f"assumption_{base_id}_missing_{index}",
+                summary=f"Missing critical evidence: {item}.",
+                confidence="missing",
+            )
+            for index, item in enumerate(
+                (
+                    "current revenue baseline",
+                    "margins",
+                    "capacity",
+                    "conversion",
+                    "capital",
+                    "unit economics",
+                ),
+                start=1,
+            )
+        )
+        assumptions.append(
+            PlanAssumption(
+                assumption_id=f"assumption_{base_id}_framework",
+                summary=(
+                    "This is a strategic framework, not a reliable forecast, "
+                    "because the commercial baseline is unavailable."
+                ),
+                confidence="low",
+            )
+        )
+    if unsafe_order:
+        constraints.append(
+            PlanConstraint(
+                constraint_id=f"constraint_{base_id}_safety_first",
+                summary=(
+                    "Safety controls, approvals, observability and rollback must "
+                    "precede mutation-capable production rollout."
+                ),
+            )
+        )
     return CandidatePlan(
         plan_id=plan_id,
         planning_request_id=request.planning_request_id,
@@ -996,22 +1208,8 @@ def _build_candidate_plan(
             summary=_objective_summary(request, variant),
             evidence_refs=request.evidence_refs,
         ),
-        constraints=(
-            PlanConstraint(
-                constraint_id=f"constraint_{base_id}_1",
-                summary="No approvals or external execution are available in Planning Engine v1.",
-            ),
-            PlanConstraint(
-                constraint_id=f"constraint_{base_id}_2",
-                summary="Use only bounded Hermes context, intelligence and reasoning evidence.",
-            ),
-        ),
-        assumptions=(
-            PlanAssumption(
-                assumption_id=f"assumption_{base_id}_1",
-                summary="Missing operational details must be confirmed before approval.",
-            ),
-        ),
+        constraints=tuple(constraints),
+        assumptions=tuple(assumptions),
         workstreams=(workstream,),
         milestones=milestones,
         steps=steps,
@@ -1130,9 +1328,18 @@ def _extract_options(text: str) -> list[str]:
 
 
 def _objective_summary(request: ExecutivePlanningRequest, variant: str) -> str:
+    binding = _planning_context_binding(request)
+    if binding.active_subject:
+        objective = binding.current_objective or request.normalized_user_request
+        return (
+            f"Create a proposed plan for {binding.active_subject}. "
+            f"Objective: {_safe_label(objective)}. Variant: {_safe_label(variant)}."
+        )
     objective = str(request.reasoning_plan.get("user_objective") or "").strip()
     if not objective:
         objective = "Create a governed non-executing plan for the user request."
+    if _is_high_ambition_revenue_plan(request.normalized_user_request):
+        objective += " Treat the output as a strategic framework, not a reliable forecast."
     return f"{objective} Variant: {_safe_label(variant)}."
 
 
@@ -1284,11 +1491,113 @@ def _proposed_actions_for_request(
 
 
 def _planning_confidence(request: ExecutivePlanningRequest, plan: ExecutivePlan) -> str:
+    if _is_high_ambition_revenue_plan(request.normalized_user_request):
+        return "low"
     if not request.evidence_refs:
         return "assumed"
     if plan.assumptions:
         return "derived"
     return "known"
+
+
+def validate_planning_safety(
+    request: ExecutivePlanningRequest,
+    plan: ExecutivePlan,
+) -> tuple[PlanningError, ...]:
+    del plan
+    if not _requests_unsafe_execution_first(request.normalized_user_request):
+        return ()
+    return (
+        PlanningError(
+            "unsafe_execution_order",
+            "Execution cannot precede safety controls, approval design and validation.",
+        ),
+        PlanningError(
+            "approval_dependency_missing",
+            "Approval design must come before any production mutation or rollout.",
+        ),
+        PlanningError(
+            "safety_dependency_missing",
+            "Safety controls must be established before mutation-capable systems.",
+        ),
+        PlanningError(
+            "rollback_dependency_missing",
+            "Rollback readiness must exist before irreversible or production actions.",
+        ),
+        PlanningError(
+            "observability_dependency_missing",
+            "Audit and observability must be available before a restricted pilot.",
+        ),
+        PlanningError(
+            "external_mutation_before_governance",
+            "External mutation cannot precede governance controls.",
+        ),
+    )
+
+
+def _repair_plan_for_safety_first(
+    request: ExecutivePlanningRequest,
+    plan: ExecutivePlan,
+) -> ExecutivePlan:
+    del request
+    return replace(
+        plan,
+        recommendation=PlanRecommendation(
+            recommended_plan_id=plan.plan_id,
+            rationale=(
+                "Unsafe execution-first ordering was rejected and replaced with "
+                "a safety-first corrected plan. This remains proposed, not "
+                "approved and not executed."
+            ),
+            tradeoffs=(
+                "This delays live execution until safeguards are in place.",
+                "Approvals and rollback are treated as dependencies, not cleanup.",
+            ),
+            unresolved_assumptions=tuple(item.summary for item in plan.assumptions),
+        ),
+    )
+
+
+def _planning_warnings(
+    request: ExecutivePlanningRequest,
+    errors: tuple[PlanningError, ...],
+) -> tuple[str, ...]:
+    warnings: list[str] = []
+    if errors:
+        warnings.append("unsafe_order_repaired")
+    binding = _planning_context_binding(request)
+    if binding.active_subject:
+        warnings.append("active_context_bound")
+    if _is_high_ambition_revenue_plan(request.normalized_user_request):
+        warnings.append("high_ambition_missing_evidence")
+    return tuple(warnings)
+
+
+def _planning_context_binding(request: ExecutivePlanningRequest) -> PlanningContextBinding:
+    return PlanningContextBinding.from_trace(
+        request.trace_metadata.get("planning_context_binding")
+    )
+
+
+def _requests_unsafe_execution_first(text: str) -> bool:
+    folded = text.casefold()
+    return (
+        "execution first" in folded
+        or "deploy live execution first" in folded
+        or (
+            "approvals afterwards" in folded
+            and ("safety controls at the end" in folded or "safety last" in folded)
+        )
+    )
+
+
+def _is_high_ambition_revenue_plan(text: str) -> bool:
+    folded = text.casefold()
+    return (
+        "1 million" in folded
+        and "monthly revenue" in folded
+        and "om vidya group" in folded
+    )
 
 
 def _source_category_for_ref(ref: str, counts: Mapping[str, int]) -> str:

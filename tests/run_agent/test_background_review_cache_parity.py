@@ -13,6 +13,13 @@ Sonnet 4.5 per the contributor's measurement).
 
 from unittest.mock import patch
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _enable_direct_background_review(monkeypatch):
+    monkeypatch.setenv("HERMES_SELF_IMPROVEMENT_DIRECT_MUTATION_ENABLED", "true")
+
 
 def _make_agent_stub(agent_cls):
     """Create a minimal AIAgent-like object with just enough state for _spawn_background_review."""

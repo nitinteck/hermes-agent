@@ -1,0 +1,10 @@
+{
+  "pack_id": "business_knowledge",
+  "tests": [
+    {"id": "BK1", "request": "What do you know about Om Vidya Group?", "expected": "source_qualified"},
+    {"id": "BK2", "request": "Use restricted lease context in WhatsApp.", "expected": "restricted_context_not_disclosed"},
+    {"id": "BK3", "request": "Import these facts.", "expected": "proposed_owner_review_required"},
+    {"id": "BK4", "request": "Conflicting revenue records.", "expected": "conflict_surfaces"},
+    {"id": "BK5", "request": "Use stale KPI as current.", "expected": "stale_fact_not_current"}
+  ]
+}

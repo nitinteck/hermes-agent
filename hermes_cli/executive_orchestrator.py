@@ -119,6 +119,7 @@ def executive_orchestrator_status() -> dict[str, Any]:
         is_skill_selection_enabled,
     )
     from gateway.executive_planning import build_planning_status
+    from gateway.governance import build_governance_status
     from gateway.google_calendar_context_provider import (
         GoogleCalendarProviderConfig,
         google_calendar_capability_status,
@@ -128,6 +129,7 @@ def executive_orchestrator_status() -> dict[str, Any]:
 
     intelligence_registry = build_default_intelligence_registry()
     planning_status = build_planning_status()
+    governance_status = build_governance_status()
     return {
         "enabled": is_executive_orchestrator_enabled(),
         "executive_context_provider_framework_enabled": (
@@ -159,6 +161,21 @@ def executive_orchestrator_status() -> dict[str, Any]:
         "candidate_evaluation_enabled": planning_status["candidate_evaluation_enabled"],
         "proposed_action_generation_enabled": planning_status[
             "proposed_action_generation_enabled"
+        ],
+        "ip_confidentiality_guard_enabled": governance_status[
+            "ip_confidentiality_guard_enabled"
+        ],
+        "response_output_inspection_enabled": governance_status[
+            "response_output_inspection_enabled"
+        ],
+        "self_improvement_direct_mutation_enabled": governance_status[
+            "self_improvement_direct_mutation_enabled"
+        ],
+        "improvement_proposal_generation_enabled": governance_status[
+            "improvement_proposal_generation_enabled"
+        ],
+        "improvement_proposal_application_enabled": governance_status[
+            "improvement_proposal_application_enabled"
         ],
         "approval_engine_enabled": planning_status["approval_engine_enabled"],
         "execution_engine_enabled": planning_status["execution_engine_enabled"],

@@ -1,0 +1,23 @@
+records:
+  - entity_type: Person
+    canonical_name: Nitin
+    summary: Owner/operator user for Hermes business-context review.
+    source_type: project_context
+    source_reference: Hermes owner testing
+    source_authority: user_supplied_context
+    confidence: medium
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: internal
+    disclosure_policy: owner_safe
+  - entity_type: Role
+    canonical_name: Owner reviewer
+    summary: Role required to verify proposed business knowledge before publication.
+    source_type: governance_policy
+    source_reference: HERMES-BUSINESS-CONTEXT-INGESTION-v1
+    source_authority: governance_contract
+    confidence: high
+    verification_status: verified
+    owner_review_required: false
+    sensitivity: internal
+    disclosure_policy: owner_safe

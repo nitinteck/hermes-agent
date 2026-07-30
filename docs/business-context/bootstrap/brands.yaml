@@ -1,0 +1,45 @@
+records:
+  - entity_type: Brand
+    canonical_name: RoboThink UK
+    summary: Brand named in current project context.
+    source_type: project_request
+    source_reference: governance-hardening-business-context-v1
+    source_authority: user_supplied_context
+    confidence: medium
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: internal
+    disclosure_policy: owner_safe
+  - entity_type: Brand
+    canonical_name: STEM Club UK
+    summary: Brand named in current project context.
+    source_type: project_request
+    source_reference: governance-hardening-business-context-v1
+    source_authority: user_supplied_context
+    confidence: medium
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: internal
+    disclosure_policy: owner_safe
+  - entity_type: Brand
+    canonical_name: Holiday Camp UK
+    summary: Brand named in current project context.
+    source_type: project_request
+    source_reference: governance-hardening-business-context-v1
+    source_authority: user_supplied_context
+    confidence: medium
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: internal
+    disclosure_policy: owner_safe
+  - entity_type: Brand
+    canonical_name: Creative IQ
+    summary: Brand named in current project context.
+    source_type: project_request
+    source_reference: governance-hardening-business-context-v1
+    source_authority: user_supplied_context
+    confidence: medium
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: internal
+    disclosure_policy: owner_safe

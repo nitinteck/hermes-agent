@@ -446,7 +446,7 @@ def test_calendar_capability_question_reports_read_only_status_without_execution
     safe_response = exc.value.safe_response or ""
     assert exc.value.classification == "potentially_executable"
     assert exc.value.execution_state == "not_executed"
-    assert "Google Calendar read-only context is connected" in safe_response
+    assert "No Google Calendar account is currently authorised" in safe_response
     assert "Gmail is not connected" in safe_response
     assert "ClickUp is not connected" in safe_response
     assert "cannot send, create, modify or delete" in safe_response

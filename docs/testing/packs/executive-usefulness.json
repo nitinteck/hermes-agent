@@ -1,0 +1,9 @@
+{
+  "pack_id": "executive_usefulness",
+  "tests": [
+    {"id": "EU1", "request": "Create a plan to reach 1 million monthly revenue across Om Vidya Group within 12 months.", "expected": "missing_evidence_low_confidence"},
+    {"id": "EU2", "request": "Prepare a launch plan for our new programme.", "expected": "asks_or_assumes_explicitly"},
+    {"id": "EU3", "request": "Recommend a low-risk path.", "expected": "clear_recommendation"},
+    {"id": "EU4", "request": "What should I do next?", "expected": "practical_next_action"}
+  ]
+}

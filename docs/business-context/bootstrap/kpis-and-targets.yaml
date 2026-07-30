@@ -1,0 +1,12 @@
+records:
+  - entity_type: KPI
+    canonical_name: Business KPI placeholder
+    summary: No owner-verified Om Vidya Group KPI baseline has been imported yet.
+    source_type: governance_bootstrap
+    source_reference: kpis-and-targets.yaml
+    source_authority: template
+    confidence: low
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: confidential
+    disclosure_policy: internal_reasoning_only

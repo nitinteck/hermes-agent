@@ -1,6 +1,6 @@
 # Hermes Current State
 
-Last verified: 2026-07-29T19:20:00Z
+Last verified: 2026-07-30
 
 This is the authoritative current-state entrypoint for the deployed Hermes
 runtime. Historical checkpoint records remain useful as snapshots, but this
@@ -16,7 +16,7 @@ ClickUp or other read-only connectors.
 
 ## Current Phase
 
-HERMES EXECUTIVE PLANNING ENGINE v1.
+HERMES GOVERNANCE HARDENING AND BUSINESS CONTEXT FOUNDATION v1.
 
 Current foundation capabilities:
 
@@ -27,10 +27,13 @@ Current foundation capabilities:
   contracts.
 - Executive Planning Engine v1 with deterministic request-scoped candidate
   plans and proposal-only state.
+- IP Confidentiality Guard v1 for user-channel output inspection.
+- Capability Truth Registry v1 for deterministic capability claims.
+- Business Knowledge Registry v1 contracts and owner-reviewed ingestion.
 
 Next approved milestone:
 
-`Hermes Executive Approval Engine v1 Design`
+`Owner-only business context bootstrap and focused WhatsApp retest`
 
 ## Production Architecture
 
@@ -48,10 +51,8 @@ Runtime paths:
 
 Production runtime SHAs:
 
-- `hermes-agent` runtime-changing SHA:
-  `7a7ecdceab5010e5bcf5852ed756f9122e2d3b5b`
-- previous runtime-changing Hermes SHA:
-  `db818dc4da080321767562de322a0968b063bbef`
+- `hermes-agent` deployed SHA before this milestone:
+  `e48afa71693dfbde08448b4a92e0038384773053`
 - `ovos-core`: `0e6ee394d26ff2d7a814f3c84e0ed920aaaf5232`
 
 The exact deployed checkout SHA may be newer when documentation-only commits
@@ -79,8 +80,10 @@ Normal production reasoning turns follow:
 7. `ExecutiveReasoningEngine` when enabled
 8. `ExecutivePlanningEngine` when an eligible planning ReasoningPlan exists
 9. `AIAgent.run_conversation`
-10. `ExecutiveOrchestrator.observe_response`
-11. existing gateway response delivery
+10. Governance output inspection, capability-truth validation and
+    non-execution validation
+11. `ExecutiveOrchestrator.observe_response`
+12. existing gateway response delivery
 
 The gateway owns transport, auth, platform normalization, session persistence
 and outbound delivery. The Executive Orchestrator owns classification, bounded
@@ -100,6 +103,10 @@ post-response observation and trace metadata.
   plans before the LLM call.
 - Executive Planning Engine v1 creates deterministic proposed candidate plans
   for eligible planning turns.
+- IP Confidentiality Guard inspects normal WhatsApp output and replaces
+  proprietary internals with user-safe summaries.
+- Capability Truth Registry supplies plain-language availability claims.
+- Business Knowledge Registry contracts support owner-reviewed business facts.
 - Deterministic OVOS hook coexistence where existing gateway dispatch supports
   it.
 - Local Event Journal and Daily Brief data surfaces.
@@ -195,6 +202,18 @@ HERMES_DETERMINISTIC_PLANNING_ENABLED=true
 HERMES_PLANNING_MODEL_ASSISTED_ENABLED=false
 HERMES_PLANNING_CANDIDATE_EVALUATION_ENABLED=true
 HERMES_PLANNING_PROPOSED_ACTION_GENERATION_ENABLED=true
+HERMES_IP_CONFIDENTIALITY_GUARD_ENABLED=true
+HERMES_RESPONSE_OUTPUT_INSPECTION_ENABLED=true
+HERMES_SELF_IMPROVEMENT_DIRECT_MUTATION_ENABLED=false
+HERMES_IMPROVEMENT_PROPOSAL_GENERATION_ENABLED=true
+HERMES_IMPROVEMENT_PROPOSAL_APPLICATION_ENABLED=false
+HERMES_CAPABILITY_TRUTH_REGISTRY_ENABLED=true
+HERMES_PLANNING_SAFETY_VALIDATOR_ENABLED=true
+HERMES_PLANNING_CONTEXT_BINDING_ENABLED=true
+HERMES_BUSINESS_KNOWLEDGE_REGISTRY_ENABLED=true
+HERMES_BUSINESS_CONTEXT_INGESTION_ENABLED=true
+HERMES_BUSINESS_CONTEXT_RETRIEVAL_ENABLED=true
+HERMES_RESTRICTED_CONTEXT_RETRIEVAL_ENABLED=false
 HERMES_EXECUTIVE_CONTEXT_MOCK_PROVIDER_ENABLED=false
 HERMES_MCP_CONTEXT_ADAPTER_ENABLED=false
 ```
@@ -239,6 +258,10 @@ transparent evaluations, approval requirements and descriptive
 `plan_status=proposed`, `approval_status=not_requested` and
 `execution_status=not_executed`.
 
+Self-improvement output in ordinary WhatsApp is proposal-only. It cannot mutate
+Skills, profiles, prompts, routing or policy directly; proposals remain
+`proposed`, `not_requested` and `not_applied`.
+
 ## Test Status
 
 Focused Orchestrator, readiness, deployment and trace-correlation tests pass in
@@ -271,6 +294,12 @@ git -C /opt/ai-stack/ovos-core rev-parse HEAD
 /opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main reasoning diagnostics
 /opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main planning status
 /opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main planning diagnostics
+/opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main governance status
+/opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main ip-guard status
+/opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main capability-truth status
+/opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main improvement-proposals status
+/opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main business-context status
+/opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main test-packs list
 /opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main executive-orchestrator diagnostic-turn "Hermes diagnostic: confirm orchestrator health."
 /opt/ai-stack/hermes-agent/venv/bin/python -m hermes_cli.main executive-orchestrator trace-lookup --approx-timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --window-seconds 900
 cd /opt/ai-stack/ovos-core && npx supabase migration list --linked

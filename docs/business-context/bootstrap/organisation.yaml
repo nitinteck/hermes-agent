@@ -1,0 +1,25 @@
+records:
+  - entity_type: Group
+    canonical_name: Om Vidya Group
+    aliases: []
+    summary: Education and technology group context for owner-reviewed Hermes business assistance.
+    source_type: project_documentation
+    source_reference: docs/testing/HERMES-WHATSAPP-FINDINGS-2026-07-30.md
+    source_authority: project_context
+    confidence: medium
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: internal
+    disclosure_policy: owner_safe
+  - entity_type: LegalEntity
+    canonical_name: STEM Edutainment Limited
+    aliases: []
+    summary: Legal entity associated with the Om Vidya Group operating context.
+    source_type: project_request
+    source_reference: governance-hardening-business-context-v1
+    source_authority: user_supplied_context
+    confidence: medium
+    verification_status: proposed
+    owner_review_required: true
+    sensitivity: internal
+    disclosure_policy: owner_safe
