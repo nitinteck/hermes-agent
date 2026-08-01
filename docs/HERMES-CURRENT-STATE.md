@@ -1,6 +1,6 @@
 # Hermes Current State
 
-Last verified: 2026-07-29T19:20:00Z
+Last verified: 2026-08-01T00:00:00Z
 
 This is the authoritative current-state entrypoint for the deployed Hermes
 runtime. Historical checkpoint records remain useful as snapshots, but this
@@ -238,6 +238,35 @@ transparent evaluations, approval requirements and descriptive
 `ProposedActionReference` records. Every v1 plan remains
 `plan_status=proposed`, `approval_status=not_requested` and
 `execution_status=not_executed`.
+
+## RC1 Tool Boundary and Isolation Scope
+
+Donna's WhatsApp turns run under a deterministic, channel-specific tool
+allowlist (`donna_owner_rc1`), not the generic upstream Hermes toolset:
+
+- the model is offered no tools by default on the Executive Orchestrator
+  route; terminal, shell/subprocess execution, `execute_code`, `write_file`,
+  `patch`, `skill_manage` (skill creation/mutation), browser automation and
+  `computer_use` are never presented to, or invocable by, the model for a
+  Donna turn;
+- self-modification (changing Hermes's own code, prompts, skills, or
+  production rules) remains unavailable from a WhatsApp conversation, and a
+  possible-improvement note only claims nothing changed when that is
+  actually provable for that turn;
+- this restriction is scoped to the Donna Executive Orchestrator route; it
+  does not remove these tools from other Hermes platforms/profiles.
+
+Tenant/user isolation remains single-owner-only: `tenant_id`/`actor_user_id`
+are fixed process-wide values, not derived per WhatsApp sender or assistant
+instance (HTD-0017). A second assistant instance, including Parent
+Assistant, must not launch until per-instance tenant scoping is implemented
+and verified.
+
+Frozen/unmerged work, unchanged by this milestone: OVOS PR #14 (Business
+Knowledge Foundation) and Hermes PR #25 (Business Knowledge integration)
+remain open and unmerged; Hermes PR #27 (Planning Engine hardening) remains
+open and unmerged. Business Knowledge, approvals, external execution and
+external connectors remain disabled.
 
 ## Test Status
 
