@@ -842,6 +842,43 @@ def test_owner_working_set_survives_follow_up_option_ranking() -> None:
     assert "populate Business Knowledge" in prompt
 
 
+def test_owner_combined_option_ranking_does_not_execute_connector_option() -> None:
+    agent = RecordingAgent(
+        response="Remove connect Gmail. Rank WhatsApp behaviour first, Business Knowledge second."
+    )
+    message = (
+        "I have three priorities: improve WhatsApp behaviour, populate Business "
+        "Knowledge and connect Gmail. Remove the highest-risk option, then rank "
+        "the remaining two."
+    )
+
+    result = run_reasoning_with_optional_orchestrator(
+        agent=agent,
+        message=message,
+        conversation_kwargs={"conversation_history": [], "task_id": "session-1"},
+        turn=_turn(message),
+        provider="custom",
+        model="gpt-4.1-mini",
+        enabled=True,
+        orchestrator=ExecutiveOrchestrator(
+            context_provider=NoopExecutiveContextProvider(),
+            trace_sink=InMemoryExecutiveTraceSink(),
+        ),
+    )
+
+    assert agent.calls
+    assert result.prepared is not None
+    assert result.prepared.conversation_intent["category"] == "compare"
+    assert result.prepared.conversation_working_set["active_options"] == [
+        "improve WhatsApp behaviour",
+        "populate Business Knowledge",
+    ]
+    assert result.prepared.conversation_working_set["rejected_options"] == [
+        "connect Gmail"
+    ]
+    assert "I cannot send the email" not in result.result["final_response"]
+
+
 def test_whatsapp_response_sanitizes_internal_architecture_details() -> None:
     agent = RecordingAgent(
         response=(

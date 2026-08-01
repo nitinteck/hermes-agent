@@ -1001,6 +1001,16 @@ def _is_execution_request(text: str) -> bool:
             "should we",
             "compare",
             "recommend",
+            "rank",
+            "remaining two",
+            "highest-risk",
+            "highest risk",
+            "priorities:",
+            "three priorities",
+            "options:",
+            "option is",
+            "an option",
+            "one option",
         ),
     ):
         return False
@@ -1169,7 +1179,13 @@ def _extract_options(text: str) -> tuple[str, ...]:
             folded,
             ("priorities", "options", "alternatives", "choices"),
         ):
-            candidates.extend(_split_options(line.split(":", 1)[1]))
+            option_text = re.split(
+                r"\.\s+(?:remove|now|then|rank)\b|\bthen\s+rank\b",
+                line.split(":", 1)[1],
+                maxsplit=1,
+                flags=re.I,
+            )[0]
+            candidates.extend(_split_options(option_text))
         elif re.match(r"\s*[-*]\s+", line):
             candidates.append(re.sub(r"\s*[-*]\s+", "", line).strip())
     return tuple(

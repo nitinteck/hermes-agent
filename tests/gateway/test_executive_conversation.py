@@ -38,6 +38,14 @@ def test_intent_distinguishes_planning_drafting_execution_and_capability() -> No
     )
 
 
+def test_option_mention_of_connector_is_not_execution() -> None:
+    classifier = ConversationIntentClassifier()
+
+    intent = classifier.classify("One option is to connect Gmail.")
+
+    assert intent.category != ConversationIntentCategory.REQUEST_EXECUTION
+
+
 @pytest.mark.parametrize(
     "message",
     (
