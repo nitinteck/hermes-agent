@@ -30,6 +30,11 @@ from gateway.edp_governance import (
     TenantContext,
     TenantContextResolver,
 )
+from gateway.business_knowledge_repository import (
+    BusinessKnowledgeResolver,
+    BusinessKnowledgeSnapshot,
+    SupabaseBusinessKnowledgeRepository,
+)
 
 EXECUTIVE_CONTEXT_VERSION = "hermes.executive_context.v1"
 
@@ -401,6 +406,7 @@ class SupabaseExecutiveContextRepository:
         api_key: str,
         bearer_token: str,
         governance_repository: Any,
+        business_knowledge_resolver: BusinessKnowledgeResolver | None = None,
         timeout_seconds: float = 10.0,
     ) -> None:
         self.supabase_url = supabase_url.rstrip("/")
@@ -408,6 +414,14 @@ class SupabaseExecutiveContextRepository:
         self._bearer_token = bearer_token
         self._timeout_seconds = timeout_seconds
         self.governance_repository = governance_repository
+        self.business_knowledge_resolver = business_knowledge_resolver or BusinessKnowledgeResolver(
+            repository=SupabaseBusinessKnowledgeRepository(
+                supabase_url=self.supabase_url,
+                api_key=self._api_key,
+                bearer_token=self._bearer_token,
+                timeout_seconds=self._timeout_seconds,
+            )
+        )
         self._request_cache: dict[str, tuple[Mapping[str, Any], ...]] = {}
         self._load_warnings: list[str] = []
 
@@ -478,6 +492,14 @@ class SupabaseExecutiveContextRepository:
             records.extend(self._load_strategic_records(tenant_context, limits))
             records.extend(self._load_operational_records(tenant_context, limits))
             records.extend(self._load_knowledge_records(tenant_context, limits))
+            snapshot = self.business_knowledge_resolver.resolve(
+                tenant_context=tenant_context,
+                query=None,
+                include_sensitive=False,
+                limit=_limit(limits, "max_brief_items", 5),
+            )
+            records.extend(_business_knowledge_records(snapshot))
+            warnings.extend(snapshot.warnings)
         except ExecutiveContextRepositoryError:
             raise
         except Exception as exc:
@@ -1114,6 +1136,126 @@ def _proposal_status_record(status: Mapping[str, Any]) -> ExecutiveContextRecord
     )
 
 
+def _business_knowledge_records(
+    snapshot: BusinessKnowledgeSnapshot,
+) -> tuple[ExecutiveContextRecord, ...]:
+    records: list[ExecutiveContextRecord] = []
+    for entity in snapshot.entities:
+        category = (
+            "organisation"
+            if entity.entity_kind
+            in {
+                "organisation",
+                "brand",
+                "legal_entity",
+                "person",
+                "role",
+                "relationship",
+                "location",
+                "product",
+                "programme",
+            }
+            else "knowledge"
+        )
+        summary = _join_summary(
+            kind=entity.entity_kind,
+            status=entity.status,
+            summary=entity.summary,
+            provenance=_safe_provenance(entity.provenance),
+        )
+        records.append(
+            _record(
+                category=category,
+                source_table="ovos.business_entities",
+                source_ref=entity.entity_id,
+                title=entity.canonical_name,
+                summary=summary,
+                confidence=entity.confidence,
+                sensitivity=entity.sensitivity,
+                observed_at=entity.observed_at,
+                evidence_refs=(
+                    ExecutiveContextEvidence(
+                        evidence_id=f"business_entity:{entity.entity_id}",
+                        source_table="ovos.business_entities",
+                        source_ref=entity.source_ref or entity.entity_id,
+                        digest=_digest(summary)[:16],
+                        sensitivity=entity.sensitivity,
+                    ),
+                ),
+                metadata={
+                    "context_type": "business_entity",
+                    "entity_kind": entity.entity_kind,
+                    "business_knowledge": True,
+                },
+            )
+        )
+    for fact in snapshot.facts:
+        summary = _join_summary(
+            fact_type=fact.fact_type,
+            lifecycle=fact.lifecycle,
+            statement=fact.statement,
+            provenance=_safe_provenance(fact.provenance),
+        )
+        records.append(
+            _record(
+                category="knowledge",
+                source_table="ovos.business_facts",
+                source_ref=fact.fact_id,
+                title=fact.fact_label,
+                summary=summary,
+                confidence=fact.confidence,
+                sensitivity=fact.sensitivity,
+                observed_at=fact.observed_at,
+                evidence_refs=(
+                    ExecutiveContextEvidence(
+                        evidence_id=f"business_fact:{fact.fact_id}",
+                        source_table="ovos.business_facts",
+                        source_ref=fact.source_ref or fact.fact_id,
+                        digest=_digest(summary)[:16],
+                        sensitivity=fact.sensitivity,
+                    ),
+                ),
+                metadata={
+                    "context_type": "business_fact",
+                    "fact_type": fact.fact_type,
+                    "lifecycle": fact.lifecycle,
+                    "business_knowledge": True,
+                },
+            )
+        )
+    for evidence in snapshot.evidence[:5]:
+        summary = _join_summary(
+            evidence=evidence.summary,
+            provenance=_safe_provenance(evidence.provenance),
+        )
+        records.append(
+            _record(
+                category="knowledge",
+                source_table="ovos.business_evidence",
+                source_ref=evidence.evidence_id,
+                title=evidence.title,
+                summary=summary,
+                confidence=evidence.confidence,
+                sensitivity=evidence.sensitivity,
+                observed_at=None,
+                evidence_refs=(
+                    ExecutiveContextEvidence(
+                        evidence_id=f"business_evidence:{evidence.evidence_id}",
+                        source_table="ovos.business_evidence",
+                        source_ref=evidence.source_ref or evidence.evidence_id,
+                        digest=evidence.digest,
+                        sensitivity=evidence.sensitivity,
+                    ),
+                ),
+                metadata={
+                    "context_type": "business_evidence",
+                    "business_knowledge": True,
+                },
+            )
+        )
+    return tuple(records)
+
+
 def _record(**kwargs: Any) -> ExecutiveContextRecord:
     return ExecutiveContextRecord(
         record_id=f"{kwargs['source_table']}:{kwargs['source_ref']}",
@@ -1237,6 +1379,15 @@ def _join_summary(**values: Any) -> str:
         if value:
             parts.append(f"{key}={_redact_secrets(str(value))[:320]}")
     return "; ".join(parts) or "organisation metadata available"
+
+
+def _safe_provenance(provenance: Mapping[str, Any]) -> str:
+    parts: list[str] = []
+    for key in ("source", "source_format", "entered_by", "import_only"):
+        value = provenance.get(key)
+        if value not in (None, "", [], {}):
+            parts.append(f"{key}={_safe_label(value)}")
+    return ", ".join(parts)
 
 
 def _json_list(value: Any) -> str:

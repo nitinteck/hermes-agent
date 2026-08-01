@@ -7,6 +7,12 @@ from urllib.parse import urlparse
 
 import pytest
 
+from gateway.business_knowledge_repository import (
+    BusinessKnowledgeEntity,
+    BusinessKnowledgeFact,
+    BusinessKnowledgeResolver,
+    InMemoryBusinessKnowledgeRepository,
+)
 from gateway.edp_governance import InMemoryGovernanceRepository, TenantContext
 from gateway.executive_context_repository import (
     EXECUTIVE_CONTEXT_VERSION,
@@ -339,3 +345,125 @@ def test_supabase_repository_treats_private_schema_rest_406_as_empty_section(
     assert repository._load_warnings == [  # noqa: SLF001
         "postgrest_schema_unavailable:ede_executive_plans"
     ]
+
+
+def test_supabase_repository_consumes_business_knowledge_resolver(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps([]).encode("utf-8")
+
+    def _urlopen(request, timeout):  # noqa: ANN001
+        del request, timeout
+        return _Response()
+
+    monkeypatch.setattr(
+        "gateway.executive_context_repository.urllib.request.urlopen",
+        _urlopen,
+    )
+    business_repository = InMemoryBusinessKnowledgeRepository(
+        entities=(
+            BusinessKnowledgeEntity(
+                entity_id="entity-hermes",
+                entity_kind="organisation",
+                canonical_name="Hermes Build",
+                summary="Canonical business organisation.",
+                status="active",
+                confidence=0.9,
+                provenance={"source": "manual_fixture", "import_only": True},
+            ),
+        ),
+        facts=(
+            BusinessKnowledgeFact(
+                fact_id="fact-mission",
+                fact_type="mission",
+                fact_label="Mission",
+                statement="mission: build the Executive Data Platform",
+                lifecycle="verified",
+                confidence=0.95,
+                provenance={"source_format": "json", "import_only": True},
+            ),
+        ),
+    )
+    repository = SupabaseExecutiveContextRepository(
+        supabase_url="https://example.supabase.co",
+        api_key="anon-key",
+        bearer_token="user-token",
+        governance_repository=InMemoryGovernanceRepository(),
+        business_knowledge_resolver=BusinessKnowledgeResolver(
+            repository=business_repository
+        ),
+    )
+
+    context = repository.load(
+        tenant_context=_tenant(),
+        actor_id=ACTOR_ID,
+        request_classification="executive_status",
+        correlation_id="corr-business-knowledge",
+        limits=ExecutiveContextLimits(max_brief_items=5, max_decisions=1),
+    )
+
+    assert any(
+        record.source_table == "ovos.business_entities"
+        and record.title == "Hermes Build"
+        for record in context.organisation
+    )
+    assert any(
+        record.source_table == "ovos.business_facts"
+        and "lifecycle=verified" in record.summary
+        for record in context.knowledge
+    )
+    rendered = context.render_for_reasoning(max_chars=5000)
+    assert "ovos.business_entities" in rendered
+    assert "ovos.business_facts" in rendered
+
+
+def test_business_knowledge_warning_does_not_degrade_whole_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps([]).encode("utf-8")
+
+    def _urlopen(request, timeout):  # noqa: ANN001
+        del request, timeout
+        return _Response()
+
+    monkeypatch.setattr(
+        "gateway.executive_context_repository.urllib.request.urlopen",
+        _urlopen,
+    )
+    repository = SupabaseExecutiveContextRepository(
+        supabase_url="https://example.supabase.co",
+        api_key="anon-key",
+        bearer_token="user-token",
+        governance_repository=InMemoryGovernanceRepository(),
+        business_knowledge_resolver=BusinessKnowledgeResolver(
+            repository=InMemoryBusinessKnowledgeRepository(available=False)
+        ),
+    )
+
+    context = repository.load(
+        tenant_context=_tenant(),
+        actor_id=ACTOR_ID,
+        request_classification="executive_status",
+        correlation_id="corr-business-knowledge-warning",
+        limits=ExecutiveContextLimits(max_brief_items=5, max_decisions=1),
+    )
+
+    assert context.degraded is False
+    assert "business_knowledge_repository_unavailable" in context.warnings
+    assert context.source_counts["governance"] > 0

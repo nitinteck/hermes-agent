@@ -75,10 +75,11 @@ Initial EDP-backed sources:
 | Strategic | `ovos.ede_executive_plans` |
 | Operational | `ovos.conversation_signals`, `ovos.ede_plan_risks`, `ovos.ede_approval_requests`, `ovos.ede_execution_requests`, `ovos.executive_event_journal` |
 | Governance | `ovos.edp_capability_overlays`, `ovos.edp_improvement_proposals` through governance RPC/repository contracts |
-| Knowledge | `ovos.knowledge_memories`, `ovos.knowledge_objects` where already available |
+| Knowledge | `ovos.business_entities`, `ovos.business_facts`, `ovos.business_evidence` through Business Knowledge RPCs; legacy `ovos.knowledge_memories`, `ovos.knowledge_objects` where already available |
 
-Business Knowledge migration, vector search, and document chunking remain future
-slices.
+Vector search, Executive State, ingestion pipelines, and document chunking
+remain future slices. Business Knowledge is relational-first and consumed
+through the repository boundary, not through direct table access by reasoning.
 
 ## Failure Behavior
 
