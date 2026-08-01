@@ -2,7 +2,7 @@
 
 Status: living roadmap.
 
-Last updated: 2026-07-30.
+Last updated: 2026-08-01.
 
 ## Maintenance Rule
 
@@ -160,6 +160,21 @@ Implementation documents:
 
 Business Knowledge Foundation remains review-ready but frozen pending owner
 test findings and explicit approval.
+
+RC1 hardening landed in this milestone:
+
+- an option-tracking classification fix so connector names inside a compared
+  option set are never read as an execution instruction (PR #30);
+- a deterministic Donna RC1 tool boundary (`donna_owner_rc1`): the model
+  receives no tools by default on the Executive Orchestrator route, so
+  terminal, `execute_code`, `write_file`, `patch`, `skill_manage`, browser
+  automation and `computer_use` are never available for a Donna WhatsApp
+  turn, and self-modification claims are only made when actually provable.
+
+Tenant/user isolation remains single-owner-only (see HTD-0017). A second
+assistant instance, including Parent Assistant, must not launch until
+per-instance tenant scoping is implemented and verified — this is unchanged
+by the tool-boundary work above.
 
 ## Later Milestone: Business Knowledge Population
 

@@ -46,6 +46,73 @@ EXECUTION_UNAVAILABLE_MESSAGE = (
     "external records."
 )
 
+# RC1 tool boundary for Donna. Executive Context, Intelligence, Reasoning and
+# Planning are already computed in Python by this orchestrator before the
+# model is called; the model only has to read ``prepared.reasoning_message``
+# and answer in text, so it needs no model-invokable tools at all. Keeping
+# this empty (rather than merely instructing the model not to use tools)
+# means no shell, code-execution, file-write, skill-mutation or browser tool
+# is ever presented to — or invocable by — the model during a Donna turn.
+DONNA_RC1_ALLOWED_TOOLSETS: tuple[str, ...] = ()
+
+# Tool names that can mutate local/self state or run arbitrary code. Used
+# only to make an honest true/false statement about whether such a tool was
+# even available this turn — see ``_DonnaToolBoundary`` and
+# ``_sanitize_user_channel_response``.
+_MUTATION_CAPABLE_TOOL_NAMES = frozenset({
+    "terminal",
+    "process",
+    "execute_code",
+    "write_file",
+    "patch",
+    "skill_manage",
+    "browser_navigate",
+    "browser_click",
+    "browser_type",
+    "browser_scroll",
+    "browser_back",
+    "browser_press",
+    "browser_dialog",
+    "browser_cdp",
+    "computer_use",
+})
+
+
+class _DonnaToolBoundary:
+    """Temporarily restrict ``agent``'s model-invokable tools to the Donna
+    RC1 allowlist for one turn, then restore the agent's prior tools.
+
+    ``agent.tools``/``agent.valid_tool_names`` back both the tool schema
+    presented to the model and the execution-time check in
+    ``agent/conversation_loop.py`` (any tool call whose name is not in
+    ``valid_tool_names`` is rejected before it runs). Restricting them here
+    is therefore a deterministic boundary enforced twice over — the model
+    is never offered a prohibited tool, and it cannot invoke one by name
+    even if something in the conversation tried to induce it to.
+    """
+
+    def __init__(self, agent: Any) -> None:
+        self._agent = agent
+        self._prior_tools = getattr(agent, "tools", None)
+        self._prior_valid_names = getattr(agent, "valid_tool_names", None)
+        self.tool_names: frozenset[str] = frozenset()
+
+    def __enter__(self) -> "_DonnaToolBoundary":
+        from model_tools import get_tool_definitions
+
+        restricted = get_tool_definitions(
+            enabled_toolsets=list(DONNA_RC1_ALLOWED_TOOLSETS),
+            quiet_mode=True,
+        )
+        self._agent.tools = restricted
+        self.tool_names = frozenset(tool["function"]["name"] for tool in restricted)
+        self._agent.valid_tool_names = set(self.tool_names)
+        return self
+
+    def __exit__(self, *exc_info: Any) -> None:
+        self._agent.tools = self._prior_tools
+        self._agent.valid_tool_names = self._prior_valid_names
+
 
 @dataclass(frozen=True)
 class ContextItem:
@@ -395,10 +462,11 @@ def run_reasoning_with_optional_orchestrator(
         provider=provider,
         model=model,
     )
-    result = agent.run_conversation(
-        prepared.reasoning_message,
-        **dict(conversation_kwargs),
-    )
+    with _DonnaToolBoundary(agent) as _tool_boundary:
+        result = agent.run_conversation(
+            prepared.reasoning_message,
+            **dict(conversation_kwargs),
+        )
     result, guard_result = _enforce_non_execution_response(
         result,
         request=prepared.normalized_user_request,
@@ -410,6 +478,7 @@ def run_reasoning_with_optional_orchestrator(
         request=prepared.normalized_user_request,
         channel=turn.platform,
         correlation_id=prepared.correlation_id,
+        available_tool_names=_tool_boundary.tool_names,
     )
     elapsed_ms = int((time.monotonic() - started) * 1000)
     observation = active_orchestrator.observe_response(
@@ -1549,6 +1618,7 @@ def _sanitize_user_channel_response(
     request: str,
     channel: str,
     correlation_id: str,
+    available_tool_names: frozenset[str] = frozenset(),
 ) -> Mapping[str, Any]:
     if not isinstance(result, Mapping):
         return result
@@ -1563,6 +1633,17 @@ def _sanitize_user_channel_response(
     if _looks_like_self_improvement_mutation(sanitized):
         warnings.append("self_improvement_quarantined")
         disclosure_action = "sanitize"
+        # No execution-receipt mechanism exists for self-modification, so
+        # a completed mutation can never be positively confirmed here. What
+        # *can* be proven deterministically is whether a mutation-capable
+        # tool (skill_manage, write_file, patch, ...) was even available to
+        # the model this turn — the RC1 tool boundary keeps that set empty
+        # for every Donna turn. Only make the reassuring "nothing changed"
+        # claim when that's actually provable; otherwise fail closed on the
+        # claim itself rather than asserting a fact we can't back up.
+        mutation_capability_available = bool(
+            available_tool_names & _MUTATION_CAPABLE_TOOL_NAMES
+        )
         improvement_proposal = {
             "proposal_id": f"iprop_{_digest(correlation_id + '|' + sanitized)[:16]}",
             "trigger_request_id": correlation_id,
@@ -1570,13 +1651,24 @@ def _sanitize_user_channel_response(
             "review_status": "proposed",
             "approval_status": "not_requested",
             "application_status": "not_applied",
+            "mutation_capability_available": mutation_capability_available,
+            "mutation_attempted": False,
+            "mutation_receipt_present": False,
             "direct_mutation_performed": False,
             "execution_status": "not_executed",
         }
-        sanitized = (
-            "I have noted a possible improvement for owner review. I have not "
-            "changed memory, skills, prompts, routing, or behaviour."
-        )
+        if mutation_capability_available:
+            sanitized = (
+                "I have noted a possible improvement for owner review. I "
+                "cannot confirm whether any change was made from this "
+                "conversation."
+            )
+        else:
+            sanitized = (
+                "I have noted a possible improvement for owner review. I "
+                "have not changed memory, skills, prompts, routing, or "
+                "behaviour."
+            )
     elif any(pattern.search(sanitized) for pattern in _RESTRICTED_RESPONSE_PATTERNS):
         warnings.append("ip_disclosure_sanitized")
         disclosure_action = "sanitize"

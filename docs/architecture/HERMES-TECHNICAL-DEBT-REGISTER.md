@@ -2,7 +2,7 @@
 
 Status: living register.
 
-Last updated: 2026-07-30.
+Last updated: 2026-08-01.
 
 ## Maintenance Rule
 
@@ -31,12 +31,13 @@ Debt is acceptable when named, owned, bounded, and sequenced.
 | HTD-0008 | Approvals | Approval engine is future work. | open | Approvals | EDP | User request text must not be interpreted as approval. |
 | HTD-0009 | Execution | Execution boundary is future work. | open | Execution | EDP | Requires explicit authorisation, receipts, idempotency, audit, and rollback semantics. |
 | HTD-0010 | Documentation | Older milestone docs may describe now-superseded sequencing. | open | Continuous | Hermes | Living docs here are canonical when conflicts arise. |
-| HTD-0011 | Conversation Engine | RC1 WhatsApp responses can be generic, lose option sets, over-infer and fail action-receipt truthfulness. | in_progress | Donna Executive Conversation Engine | Hermes | Addressed in review PR with typed intent, working set, evidence contract and truthfulness guard; owner retest still required. |
+| HTD-0011 | Conversation Engine | RC1 WhatsApp responses can be generic, lose option sets, over-infer and fail action-receipt truthfulness. | in_progress | Donna Executive Conversation Engine | Hermes | Addressed in review PR with typed intent, working set, evidence contract and truthfulness guard, plus a follow-up option-tracking fix (PR #30) and a deterministic Donna RC1 tool boundary (`donna_owner_rc1`); owner retest still required. |
 | HTD-0012 | Product Model | Licensed assistant architecture is documented but not implemented in runtime or database. | open | Multi-Assistant Product Foundation | Hermes/EDP | Keep platform, tenant, licence, assistant, endpoint and conversation distinct. |
 | HTD-0013 | Public Assistant Safety | Parent Assistant requires disclosure controls, participant identity, isolation and escalation workflow. | blocked | Multi-Assistant Product Foundation | Hermes/EDP | Blocked on Business Knowledge deployment, public knowledge population and customer acceptance testing. |
 | HTD-0014 | Operations | Customer onboarding, WhatsApp provisioning, go-live and offboarding are runbooks only. | open | Multi-Assistant Product Foundation | Operations | Do not automate until the product foundation milestone is approved. |
 | HTD-0015 | Conversation Persistence | Conversation working set has no durable persistence or recovery beyond bounded recent context. | open | Future Conversation Engine | Hermes | Intentional for v1; any future persistence must remain tenant/user scoped and not become Executive State. |
 | HTD-0016 | Conversation Diagnostics | Diagnostics are available as orchestrator metadata, not as a dedicated operator command surface. | open | Future Operations | Hermes | Add CLI/status views only if operator workflows require them after review. |
+| HTD-0017 | Tenant Isolation | `tenant_id`/`actor_user_id` are fixed process-wide env vars (`OVOS_DEFAULT_TENANT_ID`, `OVOS_DEFAULT_OWNER_USER_ID`), not derived per WhatsApp sender/channel/assistant instance. | open | Multi-Assistant Product Foundation | Hermes/EDP | Correct and bounded for single-owner RC1; a second assistant instance must not be launched until per-instance tenant scoping is implemented and verified. |
 
 ## Debt Acceptance Criteria
 

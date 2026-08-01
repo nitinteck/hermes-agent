@@ -101,3 +101,24 @@ The smoke gate checks:
   WhatsApp behavioural test with redacted Orchestrator trace metadata.
 
 No live execution adapter is enabled by this pipeline.
+
+## Rollback
+
+For a Hermes-only redeploy (no OVOS/migration change), rollback is a plain
+redeploy of the previous known-good SHA:
+
+1. Identify the previous SHA: `git -C /opt/ai-stack/hermes-agent log --oneline -5`
+   or the deployment report from the prior release.
+2. Check out that SHA on the VPS:
+   `git -C /opt/ai-stack/hermes-agent checkout <previous-sha>`.
+3. Restart only the Hermes service:
+   `systemctl --user restart hermes-gateway.service`.
+4. Run health verification (see Health Verification above): systemd active
+   state, gateway process present, `hermes executive-orchestrator status`.
+5. Run the WhatsApp smoke test: send a real WhatsApp message to the owner
+   number and confirm a normal, non-execution-claiming response.
+
+This rollback does not touch OVOS or apply/revert migrations. A rollback
+that must also revert an OVOS commit or a migration needs the full
+fail-closed pipeline above, run with `--expected-ovos-commit` pointed at the
+prior OVOS SHA.

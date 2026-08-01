@@ -83,6 +83,31 @@ Until the explicit Execution milestone:
 - Hermes must not claim that it sent, created, modified, deleted, or executed
   external records.
 
+## Tool Boundary
+
+Donna's WhatsApp/Executive Orchestrator route runs with a deterministic,
+channel-specific tool allowlist (`donna_owner_rc1`), not the generic upstream
+Hermes toolset:
+
+- the model is offered no tools by default for a Donna turn — Executive
+  Context, Intelligence, Reasoning and Planning are already computed in
+  Python before the model is called, so the model only has to read the
+  prepared context and answer in text;
+- terminal, shell/subprocess execution, `execute_code`, `write_file`,
+  `patch`, `skill_manage` (skill creation or mutation), browser automation
+  and `computer_use` must never be presented to, or invocable by, the model
+  for a Donna WhatsApp turn;
+- this is enforced by restricting the agent's tool schema and valid-tool-name
+  set before the model call, not by prompting the model not to use them;
+- self-modification (changing Hermes's own code, prompts, skills, or
+  production rules) remains unavailable from a WhatsApp conversation. A
+  response describing a possible improvement must not claim a change was
+  made unless a mutation-capable tool was actually available and a
+  verified receipt exists.
+- other Hermes platforms/profiles that do not route through the Donna
+  Executive Orchestrator are unaffected; this boundary is scoped to that
+  route, not a global tool removal.
+
 ## Data Modeling Rules
 
 Every durable tenant-scoped object must include:

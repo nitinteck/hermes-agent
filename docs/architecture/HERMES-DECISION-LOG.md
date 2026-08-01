@@ -2,7 +2,7 @@
 
 Status: living decision log.
 
-Last updated: 2026-07-30.
+Last updated: 2026-08-01.
 
 ## Maintenance Rule
 
@@ -35,6 +35,7 @@ clarifies an architectural decision. Link detailed ADRs where they exist.
 | HDL-0020 | 2026-07-30 | Conversation Engine is a request-time orchestration layer, not durable state. | accepted | Working sets are transient, tenant/user bound and reconstructable from bounded recent context. |
 | HDL-0021 | 2026-07-30 | Execution truthfulness is enforced after reasoning and before emission. | accepted | Completed-action claims are rewritten unless a verified execution receipt exists. |
 | HDL-0022 | 2026-07-30 | PR #27 is not merged wholesale for Donna Conversation Engine v1. | accepted | Compatible safety ideas are reused; planning registry expansion remains deferred and PR #27 stays open. |
+| HDL-0023 | 2026-08-01 | Donna RC1 runs with a deterministic, channel-specific tool allowlist (`donna_owner_rc1`) instead of the generic upstream Hermes toolset. | accepted | Terminal, shell/subprocess, `execute_code`, `write_file`, `patch`, `skill_manage`, browser automation and `computer_use` are never presented to or invocable by the model for a Donna WhatsApp turn; the restriction is scoped to the Executive Orchestrator route and does not remove these tools from other Hermes platforms/profiles. |
 
 ## Pending Decisions
 
